@@ -2,8 +2,13 @@ import type { AnchorName, ArrowElement, DiagramBlock } from "../types";
 
 /** Canvas grid step (must match index.css `.canvas` background-size). */
 export const GRID = 20;
-/** Snap when an endpoint comes within ~1/4 of a grid cell of an anchor. */
-export const SNAP_THRESHOLD = GRID / 4; // 5px
+/**
+ * Magnetic range for endpoint→anchor snapping. The spec suggested ~grid/4, but
+ * at this grid (20px) that's only 5px — far too tight to actually catch, so an
+ * endpoint almost never snapped and connections were never stored (which also
+ * killed move-follow). Use a usable, draw.io-like magnetic radius instead.
+ */
+export const SNAP_THRESHOLD = 16;
 
 /** Logical canvas size (must match .canvas width/height in index.css). */
 export const CANVAS_W = 2400;

@@ -205,21 +205,25 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
 
       {selected && (
         <g data-no-export="true">
-          {/* start handle (move start point) */}
+          {/* start handle (move start point) — green when snapped to a block */}
           <circle
             className="arrow-handle"
             cx={x1}
             cy={y1}
-            r={6}
+            r={arrow.startConnection ? 7 : 6}
+            fill={arrow.startConnection ? "#16a34a" : undefined}
+            stroke={arrow.startConnection ? "#16a34a" : undefined}
             style={{ cursor: "move" }}
             onPointerDown={startStartDrag}
           />
-          {/* end handle (move end point) */}
+          {/* end handle (move end point) — green when snapped to a block */}
           <circle
             className="arrow-handle"
             cx={x2}
             cy={y2}
-            r={6}
+            r={arrow.endConnection ? 7 : 6}
+            fill={arrow.endConnection ? "#16a34a" : undefined}
+            stroke={arrow.endConnection ? "#16a34a" : undefined}
             style={{ cursor: "move" }}
             onPointerDown={startEndDrag}
           />
