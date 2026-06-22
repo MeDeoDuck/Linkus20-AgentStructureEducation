@@ -18,24 +18,53 @@ export default function App() {
   const [saving, setSaving] = useState(false);
 
   const title = useDiagramStore((s) => s.title);
-  const deleteSelected = useDiagramStore((s) => s.deleteSelected);
-  const selectedId = useDiagramStore((s) => s.selectedId);
   const clearSelection = useDiagramStore((s) => s.clearSelection);
   const addImageElement = useDiagramStore((s) => s.addImageElement);
 
-  // Delete / Backspace removes the selected element — unless focus is in an input.
+  // Keyboard shortcuts (ignored while typing in an input).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e.target)) return;
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+      const mod = e.ctrlKey || e.metaKey;
+      const st = useDiagramStore.getState();
+
+      if (mod && (e.key === "a" || e.key === "A")) {
         e.preventDefault();
-        deleteSelected();
+        st.selectAll();
+        return;
+      }
+      if (mod && (e.key === "d" || e.key === "D")) {
+        e.preventDefault();
+        st.duplicateSelection();
+        return;
+      }
+      if (mod && (e.key === "g" || e.key === "G")) {
+        e.preventDefault();
+        if (e.shiftKey) st.ungroup();
+        else st.group();
+        return;
+      }
+      if (mod && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        if (e.shiftKey) st.redo();
+        else st.undo();
+        return;
+      }
+      if (mod && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        st.redo();
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && st.selection.length) {
+        e.preventDefault();
+        st.deleteSelection();
+        return;
       }
       if (e.key === "Escape") clearSelection();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [deleteSelected, selectedId, clearSelection]);
+  }, [clearSelection]);
 
   // Ctrl+V image paste — insert the clipboard image at the canvas center.
   useEffect(() => {

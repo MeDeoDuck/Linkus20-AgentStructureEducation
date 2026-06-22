@@ -17,6 +17,8 @@ export interface DiagramBlock {
   aiType?: AIType;
   /** The single logo chosen from the bottom-sheet picker (replaces the old logos[]). */
   selectedLogo?: LogoItem;
+  /** Shared id for grouped elements (Ctrl+G). */
+  groupId?: string;
 }
 
 export type AnchorName =
@@ -44,6 +46,7 @@ export interface ArrowElement {
   curve: number;
   startConnection?: ArrowConnection;
   endConnection?: ArrowConnection;
+  groupId?: string;
 }
 
 export interface ImageElement {
@@ -56,6 +59,13 @@ export interface ImageElement {
   src: string;
   fileName?: string;
   aspectRatio?: number;
+  groupId?: string;
 }
 
-export type SelectedKind = "block" | "arrow" | "image" | null;
+export type SelectedKind = "block" | "arrow" | "image";
+
+/** A reference to one selectable object (multi-selection element). */
+export interface ElementRef {
+  type: SelectedKind;
+  id: string;
+}

@@ -577,3 +577,70 @@ button {
 .smart-guide-line.horizontal {
   height: 1.5px;
 }
+
+/* ===== Marquee + group selection ===== */
+.marquee-selection-box {
+  position: absolute;
+  border: 1px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  pointer-events: none;
+  z-index: 7;
+}
+
+.group-selection-box {
+  position: absolute;
+  border: 1.5px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.04);
+  pointer-events: none;
+  z-index: 7;
+}
+
+.group-selection-handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #0284c7;
+  background: #fff;
+  border-radius: 2px;
+  pointer-events: auto;
+  z-index: 8;
+}
+
+/* ===== TopBar tools ===== */
+.topbar__tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.tool-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1;
+}
+
+.tool-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--bg-muted);
+}
+
+.tool-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tool-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+}

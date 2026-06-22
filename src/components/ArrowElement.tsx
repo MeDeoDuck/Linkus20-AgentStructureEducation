@@ -8,6 +8,8 @@ import {
   findNearestAnchor,
   SNAP_THRESHOLD,
 } from "../utils/anchors";
+import { isRefSelected } from "../utils/selection";
+import { useSelectionGestures } from "../hooks/useSelectionGestures";
 
 interface ArrowElementProps {
   arrow: Arrow;
@@ -28,14 +30,17 @@ interface ArrowElementProps {
  */
 export default function ArrowElement({ arrow }: ArrowElementProps) {
   const blocks = useDiagramStore((s) => s.blocks);
-  const selectedId = useDiagramStore((s) => s.selectedId);
-  const selectedKind = useDiagramStore((s) => s.selectedKind);
+  const selection = useDiagramStore((s) => s.selection);
   const select = useDiagramStore((s) => s.select);
+  const toggleSelection = useDiagramStore((s) => s.toggleSelection);
   const moveArrow = useDiagramStore((s) => s.moveArrow);
   const updateArrow = useDiagramStore((s) => s.updateArrow);
   const updateArrowConnection = useDiagramStore((s) => s.updateArrowConnection);
+  const beginHistory = useDiagramStore((s) => s.beginHistory);
+  const { startMove } = useSelectionGestures();
 
-  const selected = selectedKind === "arrow" && selectedId === arrow.id;
+  const selected = isRefSelected({ type: "arrow", id: arrow.id }, selection);
+  const isOnly = selected && selection.length === 1;
 
   // Local endpoints (pivot at origin).
   const x1 = 0;
@@ -63,12 +68,28 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
   // any blocks, so both connections are cleared.
   const startBodyDrag = (e: React.PointerEvent) => {
     e.stopPropagation();
-    select(arrow.id, "arrow");
+
+    if (e.shiftKey) {
+      toggleSelection({ type: "arrow", id: arrow.id });
+      return;
+    }
+    const ref = { type: "arrow" as const, id: arrow.id };
+    let sel = useDiagramStore.getState().selection;
+    if (!isRefSelected(ref, sel)) {
+      select(arrow.id, "arrow");
+      sel = useDiagramStore.getState().selection;
+    }
+    if (sel.length > 1) {
+      startMove(e);
+      return;
+    }
+
     const sx = e.clientX;
     const sy = e.clientY;
     const ox = arrow.x;
     const oy = arrow.y;
     let detached = false;
+    let begun = false;
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - sx;
       const dy = ev.clientY - sy;
@@ -76,6 +97,10 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
       // connected arrow isn't unhooked by a stray tap.
       if (!detached && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
         detached = true;
+        if (!begun) {
+          beginHistory();
+          begun = true;
+        }
         if (arrow.startConnection) updateArrowConnection(arrow.id, "start", undefined);
         if (arrow.endConnection) updateArrowConnection(arrow.id, "end", undefined);
       }
@@ -97,7 +122,12 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
     select(arrow.id, "arrow");
     const svg = (e.currentTarget as SVGGraphicsElement).ownerSVGElement!;
     const fixedStart = arrowStartPoint(arrow);
+    let begun = false;
     const onMove = (ev: PointerEvent) => {
+      if (!begun) {
+        beginHistory();
+        begun = true;
+      }
       let p = clientToCanvas(svg, ev.clientX, ev.clientY);
       const hit = findNearestAnchor(p, blocks, SNAP_THRESHOLD);
       if (hit) {
@@ -122,7 +152,12 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
     select(arrow.id, "arrow");
     const svg = (e.currentTarget as SVGGraphicsElement).ownerSVGElement!;
     const fixedEnd = arrowEndPoint(arrow);
+    let begun = false;
     const onMove = (ev: PointerEvent) => {
+      if (!begun) {
+        beginHistory();
+        begun = true;
+      }
       let p = clientToCanvas(svg, ev.clientX, ev.clientY);
       const hit = findNearestAnchor(p, blocks, SNAP_THRESHOLD);
       if (hit) {
@@ -151,7 +186,12 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
     const sy = e.clientY;
     const oc = arrow.curve;
     const rad = (-arrow.rotation * Math.PI) / 180;
+    let begun = false;
     const onMove = (ev: PointerEvent) => {
+      if (!begun) {
+        beginHistory();
+        begun = true;
+      }
       const dx = ev.clientX - sx;
       const dy = ev.clientY - sy;
       const localDy = dx * Math.sin(rad) + dy * Math.cos(rad);
@@ -177,7 +217,12 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
     const sy = rect.height ? 1600 / rect.height : 1;
     const screenPivotX = rect.left + arrow.x / sx;
     const screenPivotY = rect.top + arrow.y / sy;
+    let begun = false;
     const onMove = (ev: PointerEvent) => {
+      if (!begun) {
+        beginHistory();
+        begun = true;
+      }
       const ang = Math.atan2(ev.clientY - screenPivotY, ev.clientX - screenPivotX);
       updateArrow(arrow.id, { rotation: (ang * 180) / Math.PI });
     };
@@ -203,7 +248,7 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
         fill={selected ? "#2563eb" : "#374151"}
       />
 
-      {selected && (
+      {isOnly && (
         <g data-no-export="true">
           {/* start handle (move start point) — green when snapped to a block */}
           <circle

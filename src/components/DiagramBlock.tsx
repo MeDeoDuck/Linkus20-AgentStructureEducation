@@ -10,6 +10,8 @@ import {
   collectBounds,
   getElementBounds,
 } from "../utils/smartGuides";
+import { isRefSelected } from "../utils/selection";
+import { useSelectionGestures } from "../hooks/useSelectionGestures";
 
 interface DiagramBlockProps {
   block: Block;
@@ -17,17 +19,20 @@ interface DiagramBlockProps {
 }
 
 export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
-  const selectedId = useDiagramStore((s) => s.selectedId);
-  const selectedKind = useDiagramStore((s) => s.selectedKind);
+  const selection = useDiagramStore((s) => s.selection);
   const select = useDiagramStore((s) => s.select);
+  const toggleSelection = useDiagramStore((s) => s.toggleSelection);
   const moveBlock = useDiagramStore((s) => s.moveBlock);
   const updateBlock = useDiagramStore((s) => s.updateBlock);
   const openLogoPicker = useDiagramStore((s) => s.openLogoPicker);
   const clearSelectedLogo = useDiagramStore((s) => s.clearSelectedLogo);
   const setSmartGuides = useDiagramStore((s) => s.setSmartGuides);
   const clearSmartGuides = useDiagramStore((s) => s.clearSmartGuides);
+  const beginHistory = useDiagramStore((s) => s.beginHistory);
+  const { startMove } = useSelectionGestures();
 
-  const selected = selectedKind === "block" && selectedId === block.id;
+  const selected = isRefSelected({ type: "block", id: block.id }, selection);
+  const isOnly = selected && selection.length === 1;
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingText, setEditingText] = useState(false);
@@ -43,7 +48,26 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
   const onPointerDown = (e: React.PointerEvent) => {
     if (editingText) return;
     e.stopPropagation();
-    select(block.id, "block");
+
+    // Shift-click toggles membership without dragging.
+    if (e.shiftKey) {
+      toggleSelection({ type: "block", id: block.id });
+      return;
+    }
+
+    // If part of a multi-selection, drag moves the whole group.
+    const ref = { type: "block" as const, id: block.id };
+    let sel = useDiagramStore.getState().selection;
+    if (!isRefSelected(ref, sel)) {
+      select(block.id, "block");
+      sel = useDiagramStore.getState().selection;
+    }
+    if (sel.length > 1) {
+      startMove(e);
+      return;
+    }
+
+    let begun = false;
     dragState.current = {
       active: true,
       sx: e.clientX,
@@ -59,7 +83,13 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
       if (!ds.active) return;
       const dx = (ev.clientX - ds.sx) / scale;
       const dy = (ev.clientY - ds.sy) / scale;
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) ds.moved = true;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        ds.moved = true;
+        if (!begun) {
+          beginHistory();
+          begun = true;
+        }
+      }
       // Read latest state each frame (avoid stale-closure snap targets/dims).
       const st = useDiagramStore.getState();
       const cur = st.blocks.find((b) => b.id === block.id);
@@ -154,7 +184,7 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
               onClick={(e) => {
                 // Don't enter text editing if this click ended a drag.
                 if (dragState.current.moved) return;
-                if (selected) {
+                if (isOnly) {
                   e.stopPropagation();
                   setEditingText(true);
                 }
@@ -164,7 +194,7 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
             </div>
           )}
         </div>
-        {selected && !editingText && <ResizeHandles block={block} />}
+        {isOnly && !editingText && <ResizeHandles block={block} />}
       </div>
 
       {modalOpen && (

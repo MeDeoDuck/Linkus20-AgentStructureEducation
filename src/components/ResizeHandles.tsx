@@ -29,6 +29,7 @@ export default function ResizeHandles({ block }: ResizeHandlesProps) {
   const resizeBlock = useDiagramStore((s) => s.resizeBlock);
   const setSmartGuides = useDiagramStore((s) => s.setSmartGuides);
   const clearSmartGuides = useDiagramStore((s) => s.clearSmartGuides);
+  const beginHistory = useDiagramStore((s) => s.beginHistory);
 
   const startResize = (dir: HandleDir) => (e: React.PointerEvent) => {
     e.stopPropagation();
@@ -36,8 +37,13 @@ export default function ResizeHandles({ block }: ResizeHandlesProps) {
     const startX = e.clientX;
     const startY = e.clientY;
     const orig = { x: block.x, y: block.y, width: block.width, height: block.height };
+    let begun = false;
 
     const onMove = (ev: PointerEvent) => {
+      if (!begun) {
+        beginHistory();
+        begun = true;
+      }
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       let { x, y, width, height } = orig;

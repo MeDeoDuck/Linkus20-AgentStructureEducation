@@ -8,6 +8,8 @@ import {
   collectBounds,
   getElementBounds,
 } from "../utils/smartGuides";
+import { isRefSelected } from "../utils/selection";
+import { useSelectionGestures } from "../hooks/useSelectionGestures";
 
 interface ImageElementViewProps {
   img: ImageElement;
@@ -29,23 +31,44 @@ const HANDLES: { dir: Dir; cursor: string; fx: number; fy: number }[] = [
 const MIN = 20;
 
 export default function ImageElementView({ img }: ImageElementViewProps) {
-  const selectedId = useDiagramStore((s) => s.selectedId);
-  const selectedKind = useDiagramStore((s) => s.selectedKind);
+  const selection = useDiagramStore((s) => s.selection);
   const select = useDiagramStore((s) => s.select);
+  const toggleSelection = useDiagramStore((s) => s.toggleSelection);
   const updateImageElement = useDiagramStore((s) => s.updateImageElement);
   const setSmartGuides = useDiagramStore((s) => s.setSmartGuides);
   const clearSmartGuides = useDiagramStore((s) => s.clearSmartGuides);
+  const beginHistory = useDiagramStore((s) => s.beginHistory);
+  const { startMove } = useSelectionGestures();
 
-  const selected = selectedKind === "image" && selectedId === img.id;
+  const selected = isRefSelected({ type: "image", id: img.id }, selection);
+  const isOnly = selected && selection.length === 1;
 
   const onPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
-    select(img.id, "image");
+    if (e.shiftKey) {
+      toggleSelection({ type: "image", id: img.id });
+      return;
+    }
+    const ref = { type: "image" as const, id: img.id };
+    let sel = useDiagramStore.getState().selection;
+    if (!isRefSelected(ref, sel)) {
+      select(img.id, "image");
+      sel = useDiagramStore.getState().selection;
+    }
+    if (sel.length > 1) {
+      startMove(e);
+      return;
+    }
     const sx = e.clientX;
     const sy = e.clientY;
     const ox = img.x;
     const oy = img.y;
+    let begun = false;
     const onMove = (ev: PointerEvent) => {
+      if (!begun && (Math.abs(ev.clientX - sx) > 2 || Math.abs(ev.clientY - sy) > 2)) {
+        beginHistory();
+        begun = true;
+      }
       // Read latest state each frame (avoid stale-closure snap targets/dims).
       const st = useDiagramStore.getState();
       const cur = st.images.find((im) => im.id === img.id);
@@ -81,8 +104,13 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
     const orig = { x: img.x, y: img.y, width: img.width, height: img.height };
     const ar = img.aspectRatio || orig.width / orig.height || 1;
     const isCorner = dir.length === 2;
+    let begun = false;
 
     const onMove = (ev: PointerEvent) => {
+      if (!begun) {
+        beginHistory();
+        begun = true;
+      }
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       let { x, y, width, height } = orig;
@@ -146,7 +174,7 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
       onPointerDown={onPointerDown}
     >
       <img className="image-el__img" src={img.src} alt={img.fileName ?? ""} draggable={false} />
-      {selected &&
+      {isOnly &&
         HANDLES.map((h) => (
           <div
             key={h.dir}
