@@ -1,5 +1,13 @@
 import type { ArrowElement as Arrow } from "../types";
 import { useDiagramStore } from "../store/useDiagramStore";
+import {
+  arrowEndPoint,
+  arrowStartPoint,
+  clientToCanvas,
+  endpointsToArrow,
+  findNearestAnchor,
+  SNAP_THRESHOLD,
+} from "../utils/anchors";
 
 interface ArrowElementProps {
   arrow: Arrow;
@@ -12,15 +20,20 @@ interface ArrowElementProps {
  *    via `rotate(arrow.rotation)` around that origin (pivot = (0,0)).
  *  - `curve` lifts a quadratic Bezier control point perpendicular to the midpoint.
  *
- * Because the group is rotated, screen-space pointer deltas must be rotated back
- * into local space before being applied to width/curve (see end/curve handlers).
+ * Endpoint editing uses TWO free endpoints in canvas space: the start handle
+ * moves the start point (end fixed), the end handle moves the end point (start
+ * fixed). Each endpoint snaps to nearby block anchors; geometry is re-derived
+ * through `endpointsToArrow` so width/rotation never drift. `curve` is kept as an
+ * absolute perpendicular offset, so the bend magnitude is preserved on drag.
  */
 export default function ArrowElement({ arrow }: ArrowElementProps) {
+  const blocks = useDiagramStore((s) => s.blocks);
   const selectedId = useDiagramStore((s) => s.selectedId);
   const selectedKind = useDiagramStore((s) => s.selectedKind);
   const select = useDiagramStore((s) => s.select);
   const moveArrow = useDiagramStore((s) => s.moveArrow);
   const updateArrow = useDiagramStore((s) => s.updateArrow);
+  const updateArrowConnection = useDiagramStore((s) => s.updateArrowConnection);
 
   const selected = selectedKind === "arrow" && selectedId === arrow.id;
 
@@ -46,7 +59,8 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
   const ahx2 = ax - ah * Math.cos(angle + Math.PI / 6);
   const ahy2 = ay - ah * Math.sin(angle + Math.PI / 6);
 
-  // Move the whole arrow (drag the body). Plain canvas-space translation.
+  // Move the whole arrow (drag the body). Freely repositioning detaches it from
+  // any blocks, so both connections are cleared.
   const startBodyDrag = (e: React.PointerEvent) => {
     e.stopPropagation();
     select(arrow.id, "arrow");
@@ -54,9 +68,17 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
     const sy = e.clientY;
     const ox = arrow.x;
     const oy = arrow.y;
+    let detached = false;
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - sx;
       const dy = ev.clientY - sy;
+      // Only detach once the user actually drags (not on a select-click), so a
+      // connected arrow isn't unhooked by a stray tap.
+      if (!detached && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+        detached = true;
+        if (arrow.startConnection) updateArrowConnection(arrow.id, "start", undefined);
+        if (arrow.endConnection) updateArrowConnection(arrow.id, "end", undefined);
+      }
       const nx = Math.min(Math.max(0, ox + dx), 2400);
       const ny = Math.min(Math.max(0, oy + dy), 1600);
       moveArrow(arrow.id, nx, ny);
@@ -69,21 +91,22 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
     window.addEventListener("pointerup", onUp);
   };
 
-  // Drag the END handle: changes width (length).
-  // The group is rotated, so rotate the screen delta back into local space
-  // and apply the local horizontal component to the length.
+  // Drag the END handle: move the end point in 2D (start fixed), snapping to anchors.
   const startEndDrag = (e: React.PointerEvent) => {
     e.stopPropagation();
     select(arrow.id, "arrow");
-    const sx = e.clientX;
-    const sy = e.clientY;
-    const ow = arrow.width;
-    const rad = (-arrow.rotation * Math.PI) / 180;
+    const svg = (e.currentTarget as SVGGraphicsElement).ownerSVGElement!;
+    const fixedStart = arrowStartPoint(arrow);
     const onMove = (ev: PointerEvent) => {
-      const dx = ev.clientX - sx;
-      const dy = ev.clientY - sy;
-      const localDx = dx * Math.cos(rad) - dy * Math.sin(rad);
-      updateArrow(arrow.id, { width: Math.max(40, ow + localDx) });
+      let p = clientToCanvas(svg, ev.clientX, ev.clientY);
+      const hit = findNearestAnchor(p, blocks, SNAP_THRESHOLD);
+      if (hit) {
+        p = hit.point;
+        updateArrowConnection(arrow.id, "end", { blockId: hit.blockId, anchor: hit.anchor });
+      } else {
+        updateArrowConnection(arrow.id, "end", undefined);
+      }
+      updateArrow(arrow.id, endpointsToArrow(fixedStart, p));
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
@@ -93,19 +116,22 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
     window.addEventListener("pointerup", onUp);
   };
 
-  // Drag the START handle: moves the whole arrow (start anchor).
+  // Drag the START handle: move the start point in 2D (end fixed), snapping to anchors.
   const startStartDrag = (e: React.PointerEvent) => {
     e.stopPropagation();
     select(arrow.id, "arrow");
-    const sx = e.clientX;
-    const sy = e.clientY;
-    const ox = arrow.x;
-    const oy = arrow.y;
+    const svg = (e.currentTarget as SVGGraphicsElement).ownerSVGElement!;
+    const fixedEnd = arrowEndPoint(arrow);
     const onMove = (ev: PointerEvent) => {
-      updateArrow(arrow.id, {
-        x: Math.min(Math.max(0, ox + (ev.clientX - sx)), 2400),
-        y: Math.min(Math.max(0, oy + (ev.clientY - sy)), 1600),
-      });
+      let p = clientToCanvas(svg, ev.clientX, ev.clientY);
+      const hit = findNearestAnchor(p, blocks, SNAP_THRESHOLD);
+      if (hit) {
+        p = hit.point;
+        updateArrowConnection(arrow.id, "start", { blockId: hit.blockId, anchor: hit.anchor });
+      } else {
+        updateArrowConnection(arrow.id, "start", undefined);
+      }
+      updateArrow(arrow.id, endpointsToArrow(p, fixedEnd));
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
@@ -147,8 +173,10 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
     select(arrow.id, "arrow");
     const svg = (e.currentTarget as SVGGraphicsElement).ownerSVGElement!;
     const rect = svg.getBoundingClientRect();
-    const screenPivotX = rect.left + arrow.x;
-    const screenPivotY = rect.top + arrow.y;
+    const sx = rect.width ? 2400 / rect.width : 1;
+    const sy = rect.height ? 1600 / rect.height : 1;
+    const screenPivotX = rect.left + arrow.x / sx;
+    const screenPivotY = rect.top + arrow.y / sy;
     const onMove = (ev: PointerEvent) => {
       const ang = Math.atan2(ev.clientY - screenPivotY, ev.clientX - screenPivotX);
       updateArrow(arrow.id, { rotation: (ang * 180) / Math.PI });
@@ -177,7 +205,7 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
 
       {selected && (
         <g data-no-export="true">
-          {/* start handle (move anchor) */}
+          {/* start handle (move start point) */}
           <circle
             className="arrow-handle"
             cx={x1}
@@ -186,13 +214,13 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
             style={{ cursor: "move" }}
             onPointerDown={startStartDrag}
           />
-          {/* end handle (length) */}
+          {/* end handle (move end point) */}
           <circle
             className="arrow-handle"
             cx={x2}
             cy={y2}
             r={6}
-            style={{ cursor: "ew-resize" }}
+            style={{ cursor: "move" }}
             onPointerDown={startEndDrag}
           />
           {/* curve handle */}

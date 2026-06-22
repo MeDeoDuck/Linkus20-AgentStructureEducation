@@ -1,10 +1,11 @@
 import { useState } from "react";
-import type { AIType, BlockLogo } from "../types";
-import { AI_TYPE_LABELS, LOGO_SOURCES, simpleIconUrl } from "../data/logoSources";
+import type { AIType } from "../types";
+import { AI_TYPE_LABELS } from "../data/logoSources";
 
 interface AIModalProps {
   onClose: () => void;
-  onApplyLogos: (aiType: AIType, logos: BlockLogo[]) => void;
+  /** Open the bottom-sheet logo picker for the chosen category. */
+  onPickCategory: (aiType: Exclude<AIType, "custom">) => void;
   onApplyText: (text: string) => void;
 }
 
@@ -15,16 +16,12 @@ const AI_BUTTONS: Exclude<AIType, "custom">[] = [
   "imageOrTextToVideo",
 ];
 
-export default function AIModal({ onClose, onApplyLogos, onApplyText }: AIModalProps) {
+export default function AIModal({ onClose, onPickCategory, onApplyText }: AIModalProps) {
   const [customMode, setCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
 
   const handleCategory = (aiType: Exclude<AIType, "custom">) => {
-    const logos: BlockLogo[] = LOGO_SOURCES[aiType].map((src) => ({
-      name: src.name,
-      logoUrl: simpleIconUrl(src.slug),
-    }));
-    onApplyLogos(aiType, logos);
+    onPickCategory(aiType);
     onClose();
   };
 

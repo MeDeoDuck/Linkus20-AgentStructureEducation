@@ -1,7 +1,7 @@
 export type BlockType = "user" | "rectangle" | "diamond" | "rounded";
 export type AIType = "generative" | "speechToText" | "textToImage" | "imageOrTextToVideo" | "custom";
 
-export interface BlockLogo {
+export interface LogoItem {
   name: string;
   logoUrl?: string;
 }
@@ -15,7 +15,24 @@ export interface DiagramBlock {
   height: number;
   text: string;
   aiType?: AIType;
-  logos?: BlockLogo[];
+  /** The single logo chosen from the bottom-sheet picker (replaces the old logos[]). */
+  selectedLogo?: LogoItem;
+}
+
+export type AnchorName =
+  | "top"
+  | "right"
+  | "bottom"
+  | "left"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right"
+  | "center";
+
+export interface ArrowConnection {
+  blockId: string;
+  anchor: AnchorName;
 }
 
 export interface ArrowElement {
@@ -25,4 +42,20 @@ export interface ArrowElement {
   width: number;
   rotation: number;
   curve: number;
+  startConnection?: ArrowConnection;
+  endConnection?: ArrowConnection;
 }
+
+export interface ImageElement {
+  id: string;
+  type: "image";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  src: string;
+  fileName?: string;
+  aspectRatio?: number;
+}
+
+export type SelectedKind = "block" | "arrow" | "image" | null;

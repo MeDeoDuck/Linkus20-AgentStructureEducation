@@ -2,10 +2,13 @@ import { forwardRef, useRef } from "react";
 import { useDiagramStore } from "../store/useDiagramStore";
 import DiagramBlock from "./DiagramBlock";
 import ArrowLayer from "./ArrowLayer";
+import ImageElementView from "./ImageElementView";
 
 const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   const blocks = useDiagramStore((s) => s.blocks);
+  const images = useDiagramStore((s) => s.images);
   const clearSelection = useDiagramStore((s) => s.clearSelection);
+  const closeLogoPicker = useDiagramStore((s) => s.closeLogoPicker);
 
   const innerRef = useRef<HTMLDivElement | null>(null);
 
@@ -22,12 +25,19 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
         ref={setRefs}
         onPointerDown={(e) => {
           // Only clear when the background itself is clicked.
-          if (e.target === e.currentTarget) clearSelection();
+          if (e.target === e.currentTarget) {
+            clearSelection();
+            closeLogoPicker();
+          }
         }}
       >
         <ArrowLayer />
         {blocks.map((block) => (
           <DiagramBlock key={block.id} block={block} canvasRef={innerRef} />
+        ))}
+        {/* Images render above blocks (always-on-top z-order). */}
+        {images.map((img) => (
+          <ImageElementView key={img.id} img={img} />
         ))}
       </div>
     </div>

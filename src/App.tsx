@@ -2,8 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import TopBar from "./components/TopBar";
 import Sidebar from "./components/Sidebar";
 import Canvas from "./components/Canvas";
+import LogoPickerBottomSheet from "./components/LogoPickerBottomSheet";
 import { useDiagramStore } from "./store/useDiagramStore";
 import { exportCanvasToPng } from "./utils/exportCanvas";
+import { fileToImageElement } from "./utils/imageUtils";
+import { CANVAS_H, CANVAS_W } from "./utils/anchors";
+
+function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+}
 
 export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -13,17 +21,12 @@ export default function App() {
   const deleteSelected = useDiagramStore((s) => s.deleteSelected);
   const selectedId = useDiagramStore((s) => s.selectedId);
   const clearSelection = useDiagramStore((s) => s.clearSelection);
+  const addImageElement = useDiagramStore((s) => s.addImageElement);
 
   // Delete / Backspace removes the selected element — unless focus is in an input.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const typing =
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable);
-      if (typing) return;
+      if (isTyping(e.target)) return;
       if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
         e.preventDefault();
         deleteSelected();
@@ -33,6 +36,28 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [deleteSelected, selectedId, clearSelection]);
+
+  // Ctrl+V image paste — insert the clipboard image at the canvas center.
+  useEffect(() => {
+    const onPaste = async (e: ClipboardEvent) => {
+      if (isTyping(e.target)) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            const el = await fileToImageElement(file, { x: CANVAS_W / 2, y: CANVAS_H / 2 });
+            if (el) addImageElement(el);
+          }
+          break;
+        }
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [addImageElement]);
 
   const handleSave = useCallback(async () => {
     if (!canvasRef.current) return;
@@ -58,6 +83,7 @@ export default function App() {
         <Sidebar />
         <Canvas ref={canvasRef} />
       </div>
+      <LogoPickerBottomSheet />
     </div>
   );
 }

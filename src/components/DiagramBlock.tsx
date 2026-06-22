@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import type { AIType, BlockLogo, DiagramBlock as Block } from "../types";
+import type { AIType, DiagramBlock as Block } from "../types";
 import { useDiagramStore } from "../store/useDiagramStore";
 import ResizeHandles from "./ResizeHandles";
-import LogoGrid from "./LogoGrid";
+import BlockLogoView from "./BlockLogoView";
 import AIModal from "./AIModal";
 
 interface DiagramBlockProps {
@@ -16,6 +16,8 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
   const select = useDiagramStore((s) => s.select);
   const moveBlock = useDiagramStore((s) => s.moveBlock);
   const updateBlock = useDiagramStore((s) => s.updateBlock);
+  const openLogoPicker = useDiagramStore((s) => s.openLogoPicker);
+  const clearSelectedLogo = useDiagramStore((s) => s.clearSelectedLogo);
 
   const selected = selectedKind === "block" && selectedId === block.id;
 
@@ -73,15 +75,19 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
     setEditingText(false);
   };
 
-  const applyLogos = (aiType: AIType, logos: BlockLogo[]) => {
-    updateBlock(block.id, { aiType, logos });
+  // Choosing a category opens the bottom-sheet picker for this block.
+  const handlePickCategory = (aiType: Exclude<AIType, "custom">) => {
+    updateBlock(block.id, { aiType });
+    openLogoPicker(block.id, aiType);
   };
 
+  // Direct input replaces any selected logo with plain text.
   const applyText = (text: string) => {
-    updateBlock(block.id, { text, logos: [], aiType: "custom" });
+    updateBlock(block.id, { text, aiType: "custom" });
+    clearSelectedLogo(block.id);
   };
 
-  const hasLogos = (block.logos?.length ?? 0) > 0;
+  const logo = block.selectedLogo;
   const isDiamond = block.type === "diamond";
 
   // Avoid relying on canvasRef inside the block for now (kept for future pan/zoom).
@@ -101,11 +107,8 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
       >
         {isDiamond && <div className="block__diamond-shape" />}
         <div className="block__content">
-          {hasLogos ? (
-            <>
-              {block.text && <div className="block__text block__text--small">{block.text}</div>}
-              <LogoGrid logos={block.logos ?? []} />
-            </>
+          {logo ? (
+            <BlockLogoView key={logo.logoUrl ?? logo.name} logo={logo} block={block} />
           ) : editingText ? (
             <input
               className="block__text-input"
@@ -144,7 +147,7 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
       {modalOpen && (
         <AIModal
           onClose={() => setModalOpen(false)}
-          onApplyLogos={applyLogos}
+          onPickCategory={handlePickCategory}
           onApplyText={applyText}
         />
       )}
