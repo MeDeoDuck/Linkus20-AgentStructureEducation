@@ -10,6 +10,7 @@ import type {
   SelectedKind,
 } from "../types";
 import { reconcileArrow } from "../utils/anchors";
+import type { SmartGuideLine } from "../utils/smartGuides";
 
 interface DiagramState {
   title: string;
@@ -22,6 +23,9 @@ interface DiagramState {
   // Bottom-sheet logo picker target.
   activeLogoPickerBlockId?: string;
   activeLogoPickerAIType?: AIType;
+
+  // Transient smart-alignment guide lines (shown only during drag/resize).
+  smartGuides: SmartGuideLine[];
 
   setTitle: (title: string) => void;
   addBlock: (type: BlockType) => void;
@@ -49,6 +53,9 @@ interface DiagramState {
   closeLogoPicker: () => void;
   setSelectedLogo: (blockId: string, logo: LogoItem) => void;
   clearSelectedLogo: (blockId: string) => void;
+
+  setSmartGuides: (guides: SmartGuideLine[]) => void;
+  clearSmartGuides: () => void;
 }
 
 const DEFAULT_TEXT: Record<BlockType, string> = {
@@ -90,6 +97,7 @@ export const useDiagramStore = create<DiagramState>((set) => ({
   selectedKind: null,
   activeLogoPickerBlockId: undefined,
   activeLogoPickerAIType: undefined,
+  smartGuides: [],
 
   setTitle: (title) => set({ title }),
 
@@ -246,4 +254,8 @@ export const useDiagramStore = create<DiagramState>((set) => ({
         b.id === blockId ? { ...b, selectedLogo: undefined } : b
       ),
     })),
+
+  setSmartGuides: (guides) => set({ smartGuides: guides }),
+
+  clearSmartGuides: () => set((state) => (state.smartGuides.length ? { smartGuides: [] } : state)),
 }));

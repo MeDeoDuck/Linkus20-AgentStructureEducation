@@ -3,10 +3,12 @@ import { useDiagramStore } from "../store/useDiagramStore";
 import DiagramBlock from "./DiagramBlock";
 import ArrowLayer from "./ArrowLayer";
 import ImageElementView from "./ImageElementView";
+import SmartGuideOverlay from "./SmartGuideOverlay";
 
 const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   const blocks = useDiagramStore((s) => s.blocks);
   const images = useDiagramStore((s) => s.images);
+  const smartGuides = useDiagramStore((s) => s.smartGuides);
   const clearSelection = useDiagramStore((s) => s.clearSelection);
   const closeLogoPicker = useDiagramStore((s) => s.closeLogoPicker);
 
@@ -39,6 +41,8 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
         {images.map((img) => (
           <ImageElementView key={img.id} img={img} />
         ))}
+        {/* Smart alignment guides on top of everything (below selection handles). */}
+        <SmartGuideOverlay guides={smartGuides} />
       </div>
     </div>
   );

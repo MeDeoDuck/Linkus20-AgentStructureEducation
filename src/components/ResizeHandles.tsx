@@ -1,5 +1,10 @@
 import type { DiagramBlock } from "../types";
 import { useDiagramStore } from "../store/useDiagramStore";
+import {
+  SMART_SNAP_THRESHOLD,
+  calculateSmartSnapOnResize,
+  collectBounds,
+} from "../utils/smartGuides";
 
 interface ResizeHandlesProps {
   block: DiagramBlock;
@@ -22,6 +27,8 @@ const MIN = 40;
 
 export default function ResizeHandles({ block }: ResizeHandlesProps) {
   const resizeBlock = useDiagramStore((s) => s.resizeBlock);
+  const setSmartGuides = useDiagramStore((s) => s.setSmartGuides);
+  const clearSmartGuides = useDiagramStore((s) => s.clearSmartGuides);
 
   const startResize = (dir: HandleDir) => (e: React.PointerEvent) => {
     e.stopPropagation();
@@ -45,6 +52,23 @@ export default function ResizeHandles({ block }: ResizeHandlesProps) {
         height = Math.max(MIN, orig.height - dy);
         y = orig.y + (orig.height - height);
       }
+
+      // Smart alignment: snap the active edge(s) to other objects' edges/centers
+      // or equal width/height, and surface guide lines.
+      const st = useDiagramStore.getState();
+      const others = collectBounds(st.blocks, st.images, block.id);
+      const snapped = calculateSmartSnapOnResize(
+        { id: block.id, x, y, width, height },
+        dir,
+        others,
+        SMART_SNAP_THRESHOLD
+      );
+      x = snapped.x;
+      y = snapped.y;
+      width = snapped.width;
+      height = snapped.height;
+      setSmartGuides(snapped.guides);
+
       // Clamp within the canvas bounds (2400 x 1600).
       x = Math.max(0, x);
       y = Math.max(0, y);
@@ -54,6 +78,7 @@ export default function ResizeHandles({ block }: ResizeHandlesProps) {
     };
 
     const onUp = () => {
+      clearSmartGuides();
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };

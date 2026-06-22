@@ -1,6 +1,13 @@
 import type { ImageElement } from "../types";
 import { useDiagramStore } from "../store/useDiagramStore";
 import { CANVAS_H, CANVAS_W } from "../utils/anchors";
+import {
+  SMART_SNAP_THRESHOLD,
+  calculateSmartSnapOnMove,
+  calculateSmartSnapOnResize,
+  collectBounds,
+  getElementBounds,
+} from "../utils/smartGuides";
 
 interface ImageElementViewProps {
   img: ImageElement;
@@ -26,6 +33,8 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
   const selectedKind = useDiagramStore((s) => s.selectedKind);
   const select = useDiagramStore((s) => s.select);
   const updateImageElement = useDiagramStore((s) => s.updateImageElement);
+  const setSmartGuides = useDiagramStore((s) => s.setSmartGuides);
+  const clearSmartGuides = useDiagramStore((s) => s.clearSmartGuides);
 
   const selected = selectedKind === "image" && selectedId === img.id;
 
@@ -37,11 +46,25 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
     const ox = img.x;
     const oy = img.y;
     const onMove = (ev: PointerEvent) => {
-      const nx = Math.min(Math.max(0, ox + (ev.clientX - sx)), CANVAS_W - img.width);
-      const ny = Math.min(Math.max(0, oy + (ev.clientY - sy)), CANVAS_H - img.height);
+      // Read latest state each frame (avoid stale-closure snap targets/dims).
+      const st = useDiagramStore.getState();
+      const cur = st.images.find((im) => im.id === img.id);
+      const w = cur?.width ?? img.width;
+      const h = cur?.height ?? img.height;
+      let nx = Math.min(Math.max(0, ox + (ev.clientX - sx)), CANVAS_W - w);
+      let ny = Math.min(Math.max(0, oy + (ev.clientY - sy)), CANVAS_H - h);
+
+      const moving = getElementBounds({ id: img.id, x: nx, y: ny, width: w, height: h });
+      const others = collectBounds(st.blocks, st.images, img.id);
+      const { dx, dy, guides } = calculateSmartSnapOnMove(moving, others, SMART_SNAP_THRESHOLD);
+      nx = Math.min(Math.max(0, nx + dx), CANVAS_W - w);
+      ny = Math.min(Math.max(0, ny + dy), CANVAS_H - h);
+      setSmartGuides(guides);
+
       updateImageElement(img.id, { x: nx, y: ny });
     };
     const onUp = () => {
+      clearSmartGuides();
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
@@ -81,6 +104,26 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
         if (dir.includes("n")) y = orig.y + (orig.height - height);
       }
 
+      // Smart alignment on single-axis (edge) resize only — corner keeps aspect,
+      // so size/edge snapping is skipped there to avoid fighting the ratio lock.
+      if (!isCorner) {
+        const st = useDiagramStore.getState();
+        const others = collectBounds(st.blocks, st.images, img.id);
+        const snapped = calculateSmartSnapOnResize(
+          { id: img.id, x, y, width, height },
+          dir,
+          others,
+          SMART_SNAP_THRESHOLD
+        );
+        x = snapped.x;
+        y = snapped.y;
+        width = snapped.width;
+        height = snapped.height;
+        setSmartGuides(snapped.guides);
+      } else {
+        clearSmartGuides();
+      }
+
       x = Math.max(0, x);
       y = Math.max(0, y);
       width = Math.min(width, CANVAS_W - x);
@@ -88,6 +131,7 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
       updateImageElement(img.id, { x, y, width, height });
     };
     const onUp = () => {
+      clearSmartGuides();
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };

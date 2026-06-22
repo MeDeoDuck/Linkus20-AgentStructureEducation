@@ -4,6 +4,12 @@ import { useDiagramStore } from "../store/useDiagramStore";
 import ResizeHandles from "./ResizeHandles";
 import BlockLogoView from "./BlockLogoView";
 import AIModal from "./AIModal";
+import {
+  SMART_SNAP_THRESHOLD,
+  calculateSmartSnapOnMove,
+  collectBounds,
+  getElementBounds,
+} from "../utils/smartGuides";
 
 interface DiagramBlockProps {
   block: Block;
@@ -18,6 +24,8 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
   const updateBlock = useDiagramStore((s) => s.updateBlock);
   const openLogoPicker = useDiagramStore((s) => s.openLogoPicker);
   const clearSelectedLogo = useDiagramStore((s) => s.clearSelectedLogo);
+  const setSmartGuides = useDiagramStore((s) => s.setSmartGuides);
+  const clearSmartGuides = useDiagramStore((s) => s.clearSmartGuides);
 
   const selected = selectedKind === "block" && selectedId === block.id;
 
@@ -52,12 +60,27 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
       const dx = (ev.clientX - ds.sx) / scale;
       const dy = (ev.clientY - ds.sy) / scale;
       if (Math.abs(dx) > 2 || Math.abs(dy) > 2) ds.moved = true;
-      const nx = Math.min(Math.max(0, ds.ox + dx), 2400 - block.width);
-      const ny = Math.min(Math.max(0, ds.oy + dy), 1600 - block.height);
+      // Read latest state each frame (avoid stale-closure snap targets/dims).
+      const st = useDiagramStore.getState();
+      const cur = st.blocks.find((b) => b.id === block.id);
+      const w = cur?.width ?? block.width;
+      const h = cur?.height ?? block.height;
+      let nx = Math.min(Math.max(0, ds.ox + dx), 2400 - w);
+      let ny = Math.min(Math.max(0, ds.oy + dy), 1600 - h);
+
+      // Smart alignment: nudge toward other objects' edges/centers + show guides.
+      const moving = getElementBounds({ id: block.id, x: nx, y: ny, width: w, height: h });
+      const others = collectBounds(st.blocks, st.images, block.id);
+      const { dx: sdx, dy: sdy, guides } = calculateSmartSnapOnMove(moving, others, SMART_SNAP_THRESHOLD);
+      nx = Math.min(Math.max(0, nx + sdx), 2400 - block.width);
+      ny = Math.min(Math.max(0, ny + sdy), 1600 - block.height);
+      setSmartGuides(guides);
+
       moveBlock(block.id, nx, ny);
     };
     const onUp = () => {
       dragState.current.active = false;
+      clearSmartGuides();
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
