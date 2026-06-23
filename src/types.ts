@@ -47,6 +47,8 @@ export interface ArrowElement {
   startConnection?: ArrowConnection;
   endConnection?: ArrowConnection;
   groupId?: string;
+  /** Optional edge label (set by the AI Assistant when creating connections). */
+  label?: string;
 }
 
 export interface ImageElement {

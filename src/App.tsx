@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import TopBar from "./components/TopBar";
 import Sidebar from "./components/Sidebar";
 import Canvas from "./components/Canvas";
+import AIAssistantPanel from "./components/AIAssistantPanel";
 import LogoPickerBottomSheet from "./components/LogoPickerBottomSheet";
 import { useDiagramStore } from "./store/useDiagramStore";
 import { exportCanvasToPng } from "./utils/exportCanvas";
@@ -88,29 +89,41 @@ export default function App() {
     return () => window.removeEventListener("paste", onPaste);
   }, [addImageElement]);
 
-  const handleSave = useCallback(async () => {
-    if (!canvasRef.current) return;
-    setSaving(true);
-    // Hide selection visuals during capture.
-    clearSelection();
-    try {
-      // Let React flush the deselection before capturing.
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
-      await exportCanvasToPng(canvasRef.current, title);
-    } catch (err) {
-      console.error("저장 실패:", err);
-      alert("저장에 실패했습니다. 콘솔을 확인해 주세요.");
-    } finally {
-      setSaving(false);
-    }
-  }, [title, clearSelection]);
+  const handleSave = useCallback(
+    async (fit?: { width: number; height: number; suffix: string }) => {
+      if (!canvasRef.current) return;
+      setSaving(true);
+      // Hide selection visuals during capture.
+      clearSelection();
+      try {
+        // Let React flush the deselection before capturing.
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+        await exportCanvasToPng(
+          canvasRef.current,
+          title,
+          fit ? { fit: { width: fit.width, height: fit.height }, suffix: fit.suffix } : {},
+        );
+      } catch (err) {
+        console.error("저장 실패:", err);
+        alert("저장에 실패했습니다. 콘솔을 확인해 주세요.");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [title, clearSelection],
+  );
 
   return (
     <div className="app">
-      <TopBar onSave={handleSave} saving={saving} />
+      <TopBar
+        onSave={() => handleSave()}
+        onSaveSized={() => handleSave({ width: 1080, height: 1440, suffix: "_1080x1440" })}
+        saving={saving}
+      />
       <div className="app__body">
         <Sidebar />
         <Canvas ref={canvasRef} />
+        <AIAssistantPanel />
       </div>
       <LogoPickerBottomSheet />
     </div>

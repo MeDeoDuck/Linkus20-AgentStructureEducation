@@ -2,10 +2,11 @@ import { useDiagramStore } from "../store/useDiagramStore";
 
 interface TopBarProps {
   onSave: () => void;
+  onSaveSized: () => void;
   saving: boolean;
 }
 
-export default function TopBar({ onSave, saving }: TopBarProps) {
+export default function TopBar({ onSave, onSaveSized, saving }: TopBarProps) {
   const title = useDiagramStore((s) => s.title);
   const setTitle = useDiagramStore((s) => s.setTitle);
   const selection = useDiagramStore((s) => s.selection);
@@ -69,6 +70,14 @@ export default function TopBar({ onSave, saving }: TopBarProps) {
       </div>
 
       <div className="topbar__spacer" />
+      <button
+        className="btn"
+        onClick={onSaveSized}
+        disabled={saving}
+        title="1080×1440(세로형) 비율 유지로 내보내기"
+      >
+        {saving ? "저장 중…" : "1080×1440"}
+      </button>
       <button className="btn btn--primary" onClick={onSave} disabled={saving}>
         {saving ? "저장 중…" : "저장 (PNG)"}
       </button>

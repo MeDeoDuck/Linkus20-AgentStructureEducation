@@ -11,6 +11,8 @@ import type {
   SelectedKind,
 } from "../types";
 import { arrowEndPoint, arrowStartPoint, endpointsToArrow, reconcileArrow } from "../utils/anchors";
+import { applyOperations } from "../ai/diagramBridge";
+import type { Operation } from "../ai/types";
 import type { SmartGuideLine } from "../utils/smartGuides";
 import {
   allRefs,
@@ -95,6 +97,9 @@ interface DiagramState extends DiagramData {
   // Smart guides.
   setSmartGuides: (guides: SmartGuideLine[]) => void;
   clearSmartGuides: () => void;
+
+  // AI Assistant — 검증된 operations 를 일괄 적용(단일 history 스냅샷).
+  applyAIOperations: (ops: Operation[]) => void;
 
   // History.
   beginHistory: () => void;
@@ -567,6 +572,13 @@ export const useDiagramStore = create<DiagramState>((set) => ({
   setSmartGuides: (guides) => set({ smartGuides: guides }),
 
   clearSmartGuides: () => set((state) => (state.smartGuides.length ? { smartGuides: [] } : state)),
+
+  applyAIOperations: (ops) =>
+    set((state) => {
+      if (!ops.length) return state;
+      const { blocks, arrows } = applyOperations({ blocks: state.blocks, arrows: state.arrows }, ops);
+      return { blocks, arrows, selection: [], past: pushPast(state), future: [] };
+    }),
 
   beginHistory: () => set((state) => ({ past: pushPast(state), future: [] })),
 
