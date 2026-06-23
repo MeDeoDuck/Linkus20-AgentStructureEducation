@@ -19,6 +19,8 @@ export interface DiagramBlock {
   selectedLogo?: LogoItem;
   /** Shared id for grouped elements (Ctrl+G). */
   groupId?: string;
+  /** Layer order (Photoshop-style). Higher = drawn on top. */
+  zIndex: number;
 }
 
 export type AnchorName =
@@ -49,6 +51,8 @@ export interface ArrowElement {
   groupId?: string;
   /** Optional edge label (set by the AI Assistant when creating connections). */
   label?: string;
+  /** Layer order (Photoshop-style). Higher = drawn on top. */
+  zIndex: number;
 }
 
 export interface ImageElement {
@@ -62,6 +66,8 @@ export interface ImageElement {
   fileName?: string;
   aspectRatio?: number;
   groupId?: string;
+  /** Layer order (Photoshop-style). Higher = drawn on top. */
+  zIndex: number;
 }
 
 export type SelectedKind = "block" | "arrow" | "image";

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import type { AIType } from "../types";
 import { AI_TYPE_LABELS } from "../data/logoSources";
 
@@ -32,7 +33,7 @@ export default function AIModal({ onClose, onPickCategory, onApplyText }: AIModa
     onClose();
   };
 
-  return (
+  return createPortal(
     <div className="modal-overlay" onMouseDown={onClose} data-no-export="true">
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
         {!customMode ? (
@@ -76,6 +77,7 @@ export default function AIModal({ onClose, onPickCategory, onApplyText }: AIModa
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

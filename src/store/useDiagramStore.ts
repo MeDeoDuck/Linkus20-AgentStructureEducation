@@ -11,7 +11,7 @@ import type {
   SelectedKind,
 } from "../types";
 import { arrowEndPoint, arrowStartPoint, endpointsToArrow, reconcileArrow } from "../utils/anchors";
-import { applyOperations } from "../ai/diagramBridge";
+import { applyOperations, toGraph, validateOperations } from "../ai/diagramBridge";
 import type { Operation } from "../ai/types";
 import type { SmartGuideLine } from "../utils/smartGuides";
 import {
@@ -101,6 +101,16 @@ interface DiagramState extends DiagramData {
   // AI Assistant — 검증된 operations 를 일괄 적용(단일 history 스냅샷).
   applyAIOperations: (ops: Operation[]) => void;
 
+  // 레이어 순서(zIndex).
+  bringToFront: (ref: ElementRef) => void;
+  bringForward: (ref: ElementRef) => void;
+  sendBackward: (ref: ElementRef) => void;
+  sendToBack: (ref: ElementRef) => void;
+  normalizeZIndex: () => void;
+
+  // JSON 불러오기 — 그래프에서 복원한 blocks/arrows 로 캔버스 교체.
+  loadDiagram: (blocks: DiagramBlock[], arrows: ArrowElement[]) => void;
+
   // History.
   beginHistory: () => void;
   undo: () => void;
@@ -117,7 +127,7 @@ const DEFAULT_TEXT: Record<BlockType, string> = {
 const DEFAULT_SIZE: Record<BlockType, { width: number; height: number }> = {
   user: { width: 110, height: 110 },
   rectangle: { width: 160, height: 90 },
-  diamond: { width: 140, height: 120 },
+  diamond: { width: 140, height: 100 },
   rounded: { width: 160, height: 90 },
 };
 
@@ -126,6 +136,51 @@ let spawnCounter = 0;
 
 const snap = (s: DiagramData): Snapshot => ({ blocks: s.blocks, arrows: s.arrows, images: s.images });
 const pushPast = (s: DiagramState): Snapshot[] => [...s.past, snap(s)].slice(-HISTORY_LIMIT);
+
+// ---- 레이어(zIndex) 헬퍼 ----
+const allZ = (s: DiagramData): number[] => [
+  ...s.blocks.map((b) => b.zIndex ?? 0),
+  ...s.arrows.map((a) => a.zIndex ?? 0),
+  ...s.images.map((im) => im.zIndex ?? 0),
+];
+const maxZ = (s: DiagramData): number => Math.max(0, ...allZ(s));
+const nextZ = (s: DiagramData): number => maxZ(s) + 1;
+
+type ZLayers = Pick<DiagramData, "blocks" | "arrows" | "images">;
+
+/** 모든 요소를 zIndex 오름차순으로(아래→위). 동률은 block→arrow→image 순(렌더 순서와 일치). */
+function allSortedByZ(s: DiagramData): { type: SelectedKind; id: string; z: number }[] {
+  const list = [
+    ...s.blocks.map((b) => ({ type: "block" as SelectedKind, id: b.id, z: b.zIndex ?? 0 })),
+    ...s.arrows.map((a) => ({ type: "arrow" as SelectedKind, id: a.id, z: a.zIndex ?? 0 })),
+    ...s.images.map((im) => ({ type: "image" as SelectedKind, id: im.id, z: im.zIndex ?? 0 })),
+  ];
+  return list.sort((p, q) => p.z - q.z); // Array.sort 는 안정 정렬 → 동률은 입력(block→arrow→image) 순 유지
+}
+
+/** order 배열(아래→위)대로 zIndex 를 1..N 으로 재부여 → 항상 작고 유니크(무한증가·동률 문제 차단). */
+function applyOrder(s: DiagramData, order: { type: SelectedKind; id: string }[]): ZLayers {
+  const zmap = new Map(order.map((e, idx) => [`${e.type}:${e.id}`, idx + 1]));
+  return {
+    blocks: s.blocks.map((b) => ({ ...b, zIndex: zmap.get(`block:${b.id}`) ?? b.zIndex })),
+    arrows: s.arrows.map((a) => ({ ...a, zIndex: zmap.get(`arrow:${a.id}`) ?? a.zIndex })),
+    images: s.images.map((im) => ({ ...im, zIndex: zmap.get(`image:${im.id}`) ?? im.zIndex })),
+  };
+}
+
+/** ref 를 정렬 순서에서 한 단계/맨끝으로 이동한 뒤 1..N 재부여. */
+function reorderZ(s: DiagramData, ref: ElementRef, move: "front" | "back" | "forward" | "backward"): ZLayers {
+  const sorted = allSortedByZ(s);
+  const i = sorted.findIndex((e) => e.type === ref.type && e.id === ref.id);
+  if (i < 0) return { blocks: s.blocks, arrows: s.arrows, images: s.images };
+  const order = sorted.map((e) => ({ type: e.type, id: e.id }));
+  const [item] = order.splice(i, 1);
+  if (move === "front") order.push(item);
+  else if (move === "back") order.unshift(item);
+  else if (move === "forward") order.splice(Math.min(i + 1, order.length), 0, item);
+  else order.splice(Math.max(i - 1, 0), 0, item);
+  return applyOrder(s, order);
+}
 
 function reconcileArrowsFor(blockId: string, blocks: DiagramBlock[], arrows: ArrowElement[]): ArrowElement[] {
   return arrows.map((a) =>
@@ -170,6 +225,7 @@ export const useDiagramStore = create<DiagramState>((set) => ({
         width: size.width,
         height: size.height,
         text: DEFAULT_TEXT[type],
+        zIndex: nextZ(state),
       };
       return {
         blocks: [...state.blocks, block],
@@ -190,6 +246,7 @@ export const useDiagramStore = create<DiagramState>((set) => ({
         width: 160,
         rotation: 0,
         curve: 0,
+        zIndex: nextZ(state),
       };
       return {
         arrows: [...state.arrows, arrow],
@@ -259,7 +316,7 @@ export const useDiagramStore = create<DiagramState>((set) => ({
 
   addImageElement: (image) =>
     set((state) => ({
-      images: [...state.images, image],
+      images: [...state.images, { ...image, zIndex: nextZ(state) }],
       selection: [{ type: "image", id: image.id }],
       past: pushPast(state),
       future: [],
@@ -382,17 +439,18 @@ export const useDiagramStore = create<DiagramState>((set) => ({
         return groupIdMap.get(gid);
       };
 
+      let zc = nextZ(state); // 복제본은 원본보다 위로(연속 부여)
       const newBlocks: DiagramBlock[] = [];
       for (const b of state.blocks) {
         if (!bSel.has(b.id)) continue;
         const id = crypto.randomUUID();
         blockIdMap.set(b.id, id);
-        newBlocks.push({ ...b, id, x: b.x + OFFSET, y: b.y + OFFSET, groupId: remapGroup(b.groupId) });
+        newBlocks.push({ ...b, id, x: b.x + OFFSET, y: b.y + OFFSET, groupId: remapGroup(b.groupId), zIndex: zc++ });
       }
       const newImages: ImageElement[] = [];
       for (const im of state.images) {
         if (!iSel.has(im.id)) continue;
-        newImages.push({ ...im, id: crypto.randomUUID(), x: im.x + OFFSET, y: im.y + OFFSET, groupId: remapGroup(im.groupId) });
+        newImages.push({ ...im, id: crypto.randomUUID(), x: im.x + OFFSET, y: im.y + OFFSET, groupId: remapGroup(im.groupId), zIndex: zc++ });
       }
       const newArrows: ArrowElement[] = [];
       for (const a of state.arrows) {
@@ -410,6 +468,7 @@ export const useDiagramStore = create<DiagramState>((set) => ({
           groupId: remapGroup(a.groupId),
           startConnection: remapConn(a.startConnection),
           endConnection: remapConn(a.endConnection),
+          zIndex: zc++,
         });
       }
       const selection: ElementRef[] = [
@@ -576,9 +635,40 @@ export const useDiagramStore = create<DiagramState>((set) => ({
   applyAIOperations: (ops) =>
     set((state) => {
       if (!ops.length) return state;
+      // 공개 API 방어: 검증 없이 들어온 호출도 막는다(검증은 적용의 단일 관문).
+      const { errors } = validateOperations(ops, toGraph(state.blocks, state.arrows));
+      if (errors.length) {
+        console.warn("[applyAIOperations] 검증 실패 → 적용 중단:", errors);
+        return state;
+      }
       const { blocks, arrows } = applyOperations({ blocks: state.blocks, arrows: state.arrows }, ops);
       return { blocks, arrows, selection: [], past: pushPast(state), future: [] };
     }),
+
+  bringToFront: (ref) =>
+    set((state) => ({ ...reorderZ(state, ref, "front"), past: pushPast(state), future: [] })),
+
+  sendToBack: (ref) =>
+    set((state) => ({ ...reorderZ(state, ref, "back"), past: pushPast(state), future: [] })),
+
+  bringForward: (ref) =>
+    set((state) => ({ ...reorderZ(state, ref, "forward"), past: pushPast(state), future: [] })),
+
+  sendBackward: (ref) =>
+    set((state) => ({ ...reorderZ(state, ref, "backward"), past: pushPast(state), future: [] })),
+
+  normalizeZIndex: () =>
+    set((state) => applyOrder(state, allSortedByZ(state).map((e) => ({ type: e.type, id: e.id })))),
+
+  loadDiagram: (blocks, arrows) =>
+    set((state) => ({
+      blocks,
+      arrows,
+      images: state.images,
+      selection: [],
+      past: pushPast(state),
+      future: [],
+    })),
 
   beginHistory: () => set((state) => ({ past: pushPast(state), future: [] })),
 

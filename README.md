@@ -1,189 +1,146 @@
-# AI Agent Simulation — 웹 구조도 편집기 (MVP)
+# Linkus20 — 블록 기반 다이어그램 편집기 + GitHub Copilot AI Assistant
 
-draw.io 스타일의 경량 다이어그램 편집기. 블록을 만들고 드래그/리사이즈하고,
-블록을 더블클릭해 AI 카테고리(생성형/STT/T2I/T2V) 로고를 삽입하거나 직접 텍스트를
-입력하고, 화살표를 자유 배치(길이·회전·곡률)한 뒤 캔버스를 PNG로 저장한다.
+draw.io와 비슷하지만 **자유 드로잉이 아니라, 미리 정의된 블록을 배치·연결**해 다이어그램을 만드는 웹 편집기.
+오른쪽 패널은 **GitHub Copilot 단일 경로** AI Assistant — 사용자가 GitHub 계정으로 로그인하면
+**본인 Copilot 구독/학생 인증 권한·쿼터로** 자연어 다이어그램 생성/수정을 받는다. AI 비용은 서비스 운영자가 아닌 **사용자 본인 부담**.
 
-## 스택
-
-- React 18 + TypeScript
-- Vite 5
-- Zustand (상태관리)
-- html-to-image (PNG 내보내기)
-- 일반 CSS + CSS 변수 (Tailwind 미사용)
-
-## 설치 / 실행
-
-```bash
-npm install      # 의존성 설치
-npm run dev      # 개발 서버 (http://localhost:5173)
-npm run build    # 타입체크(tsc) + 프로덕션 빌드 → dist/
-npm run preview  # 빌드 결과 미리보기
-```
+> 모델 선택 없음. Claude/GPT/Gemini/BYOK 제외. **GitHub Copilot 한 가지만** 지원.
 
 ## 주요 기능
 
-1. **레이아웃** — 좌측 얇은 도형 패널 + 상단 제목/저장 바 + 중앙 모눈 캔버스.
-2. **블록 생성** — 좌측 패널 클릭으로 사용자(원)/사각형/마름모(조건)/둥근사각형(프로세스)/화살표 추가.
-3. **블록 편집** — 드래그 이동, 8방향 핸들 리사이즈, 선택 시 파란 테두리, `Delete`/`Backspace` 삭제.
-   - 선택된 블록의 텍스트를 한 번 더 클릭하면 인라인 편집.
-4. **AI 모달** — 블록 더블클릭 시 작은 모달(5버튼): 생성형 AI / 음성→텍스트 / 텍스트→이미지 / 이미지·텍스트→영상 / 직접 입력.
-5. **로고 삽입** — AI 카테고리 선택 시 해당 회사 로고들을 블록 안에 flex-wrap 그리드로 표시. 직접 입력 선택 시 텍스트 교체.
-6. **화살표** — SVG quadratic Bezier. 선택 시 시작/끝 핸들(이동·길이), 곡률 핸들, 회전 핸들. 자유 배치.
-7. **저장(PNG)** — 캔버스 DOM만 캡처(좌패널·상단바·선택핸들·모달 제외). File System Access API 우선, 미지원 시 `<a download>` 폴백. 파일명 = 제목 + `.png`.
-8. **AI Assistant 패널** — 우측 사이드바(Copilot Chat/Claude Code 스타일). 자연어로 블록 생성·수정·연결·정렬·설명을 요청하면 AI가 **변경 제안**을 만들고, 사용자가 **적용하기**를 눌러야 캔버스에 반영된다(아래 별도 섹션 참고).
+- **3단 레이아웃** — 왼쪽 블록 팔레트 · 가운데 캔버스 · 오른쪽 Copilot AI 패널(접기/펼치기).
+- **블록 편집** — 팔레트 클릭으로 추가, 드래그 이동, 클릭 선택, 더블클릭 텍스트 수정, `Delete` 삭제.
+- **연결선** — 블록 간 화살표 연결, 블록 이동 시 자동 위치 갱신, 선택적 라벨.
+- **JSON 저장/불러오기** — 현재 다이어그램을 `{nodes, edges}` JSON으로 내보내고 복원.
+- **PNG 내보내기** — 캔버스를 이미지로 저장.
+- **AI Assistant (Copilot)** — 자연어 요청 → AI가 **변경 제안(operations)** → 미리보기 → **적용/취소**. 적용 전까지 캔버스 미반영.
+- **안전 적용** — operations 검증(존재하지 않는 id/허용 안 된 타입/중복 id/빈 배열 등) 통과 시에만 적용.
 
-## 구조
+## 사용 가능한 블록 타입 (4개로 제한)
+
+| type | 모양 | 용도 |
+|---|---|---|
+| `user` | 동그라미 | 사용자/행위자 |
+| `rectangle` | 사각형 | 일반 처리 |
+| `diamond` | 마름모 | 조건/분기 |
+| `rounded-rectangle` | 둥근 사각형 | 시작/종료·페이지·단계 |
+
+블록 데이터: `{ id, type, x, y, width, height, label }` · 연결선: `{ id, source, target, label? }` · 전체 상태: `{ nodes: [], edges: [] }`.
+> 내부 코드는 `rounded-rectangle`을 `rounded`로 정규화해 다룬다(JSON 입출력·AI 계약은 `rounded-rectangle` 표기).
+
+## 전체 아키텍처
 
 ```
-src/
-  main.tsx            진입점
-  App.tsx             레이아웃 + 단축키 + 저장 트리거
-  index.css           전역 스타일(CSS 변수)
-  types.ts            데이터 모델
-  store/useDiagramStore.ts   Zustand 스토어(블록/화살표/선택/액션)
-  data/logoSources.ts        AI 카테고리별 로고 소스(Simple Icons / Clearbit)
-  utils/exportCanvas.ts      html-to-image PNG 내보내기 + 저장 폴백
-  components/
-    TopBar.tsx        제목 input + 저장 버튼
-    Sidebar.tsx       도형 팔레트
-    Canvas.tsx        모눈 캔버스 + 요소 렌더 + 빈영역 클릭 해제
-    DiagramBlock.tsx  블록(드래그/리사이즈/텍스트/모달/로고)
-    ArrowElement.tsx  SVG 화살표(길이/회전/곡률 핸들)
-    ResizeHandles.tsx 8방향 리사이즈 핸들
-    AIModal.tsx       AI 카테고리 / 직접입력 모달
-    AIAssistantPanel.tsx  우측 AI Assistant 패널(모델선택/대화/미리보기/적용)
-    LogoGrid.tsx      로고 칩 + onError 폴백(Simple Icons → Clearbit → 텍스트 배지)
-  store/useAIStore.ts   AI 패널 상태(모델·대화·pending 제안)
-  ai/
-    types.ts          AI 도메인 타입(AINode/AIEdge/Operation/AIProvider/모델목록)
-    systemPrompt.ts   provider 에 넣는 시스템 프롬프트 + 모델별 힌트
-    diagramBridge.ts  캔버스 모델↔AI 그래프 변환, operations 검증·적용, 자동정렬
-    providers/
-      index.ts        registry(USE_MOCK 토글, 모델→provider 매핑)
-      mockProvider.ts 규칙기반 mock(키워드→샘플 operations)
-      backendProvider.ts  실 LLM 공통 호출(/api/ai/<model>, 키는 백엔드 보관)
-      copilotProvider.ts / claudeProvider.ts / openaiProvider.ts /
-      geminiProvider.ts / localProvider.ts  모델별 provider
+[브라우저: React + Zustand]                 [백엔드: Express + TS]              [GitHub]
+  왼쪽 팔레트 / 캔버스 / Copilot 패널
+        │  쿠키 세션만 사용(토큰 0)
+        ├── GET  /api/auth/github ─────────▶ authorize 302 ───────────────▶ OAuth 동의
+        │                                    ◀── code 콜백 ───────────────────┘
+        │                                    code→token 교환(server-to-server)
+        │                                    토큰을 httpOnly 세션에 저장
+        ├── GET  /api/auth/me ─────────────▶ { authenticated, user, copilotAvailable }
+        ├── POST /api/auth/logout
+        └── POST /api/ai/copilot ──────────▶ 세션 토큰으로 @github/copilot-sdk 호출 → operations JSON
 ```
 
-## 제약 / 주의사항
+핵심 원칙: **GitHub 토큰·client_secret·API Key는 프론트에 절대 노출하지 않는다.** OAuth·Copilot SDK 호출은 전부 백엔드.
 
-- **OneDrive 동기화 폴더** — 이 프로젝트는 OneDrive Desktop 아래에 있다. `node_modules`가
-  실시간 동기화되면 설치/빌드가 느려지거나 파일 잠금이 생길 수 있다. 필요 시 해당 폴더를
-  OneDrive 동기화 제외로 설정하는 것을 권장.
-- **로고 CORS / 차단** — 로고는 외부 CDN(`cdn.simpleicons.org`, `logo.clearbit.com`)에서
-  로드한다. 네트워크 차단·CORS·없는 slug인 경우 `<img onError>`가 Simple Icons → Clearbit →
-  **회사명 텍스트 배지** 순으로 폴백한다. 또한 외부 이미지가 CORS로 캡처에 포함되지 않으면
-  PNG에서 누락될 수 있다(배지 폴백은 정상 캡처됨).
-- **File System Access API** — Chrome/Edge 계열에서만 `showSaveFilePicker`로 저장 위치를
-  고를 수 있다. 미지원 브라우저(Firefox/Safari)는 자동으로 다운로드 폴더로 내려받는다.
-
----
-
-## AI Assistant 패널 사용법
-
-화면은 **3단 구조**다: 왼쪽 블록 팔레트 · 가운데 캔버스 · 오른쪽 AI Assistant 패널.
-패널 헤더의 `▶`/`◀` 버튼으로 접기/펼치기 한다.
-
-1. **모델 선택** — 상단 드롭다운에서 GitHub Copilot / Claude / GPT / Gemini / Local Model 선택.
-2. **요청 입력** — 하단 입력창에 자연어로 입력하고 **실행**(또는 `Enter`, 줄바꿈은 `Shift+Enter`).
-3. **미리보기** — AI는 캔버스를 바로 바꾸지 않고 **변경 제안(operations)** 을 패널에 요약해 보여준다.
-4. **적용/취소** — **적용하기**를 누르면 제안이 순서대로 캔버스에 반영(한 번의 Undo로 되돌릴 수 있음).
-   **취소하기**를 누르면 제안을 버린다.
-
-### 할 수 있는 요청 예시
-
-| 요청 | 결과 |
-|---|---|
-| "로그인 플로우 만들어줘" | 사용자 → 로그인 페이지 → 인증 서버 (+성공/실패 분기) 블록·연결 생성 |
-| "회원가입 흐름 그려줘" | 가입 폼 → 유효성 검사 → 저장/오류 흐름 생성 |
-| "성공/실패 조건 추가해줘" | 마름모(diamond) 분기 + 성공/실패 노드 추가 |
-| "전체 보기 좋게 정리해줘" | `layoutDiagram` 으로 왼→오 자동 정렬 |
-| "이 블록 이름 ○○로 바꿔줘" | 선택된 블록의 라벨 변경(`updateNode`) |
-| "이 다이어그램 설명해줘" | 변경 없이 현재 흐름을 텍스트로 설명 |
-| "현재 JSON 보여줘" | 현재 nodes/edges JSON 출력 |
-
-### 안전한 적용 (설계 원칙)
-
-- AI 응답은 **즉시 반영하지 않는다**. 먼저 미리보기로 요약 → 사용자가 적용을 눌러야 실행.
-- 적용 전 **검증**(`validateOperations`): 존재하지 않는 node/edge id를 참조하거나 허용되지 않은
-  블록 타입이면 **적용을 막고 경고**를 표시한다.
-- 잘못된/빈 응답은 에러 메시지로 안내한다.
-
-### 데이터 모델 (AI가 읽고 쓰는 형식)
-
-```jsonc
-{
-  "nodes": [{ "id": "node-1", "type": "user|rectangle|diamond|rounded", "x": 100, "y": 200, "width": 120, "height": 60, "label": "사용자" }],
-  "edges": [{ "id": "edge-1", "source": "node-1", "target": "node-2", "label": "요청" }]
-}
+### 폴더 구조
+```
+AIAgentSimulation/
+  src/                      프론트엔드(Vite + React + TS)
+    components/             BlockPalette(=Sidebar)/Canvas/AIAssistantPanel/LoginButton/TopBar ...
+    store/                  useDiagramStore · useAIStore · useAuthStore (상태 분리)
+    ai/                     types · systemPrompt · diagramBridge(검증·적용·정렬·직렬화) · providers(mock|copilot)
+    api/                    authApi · copilotApi (백엔드 호출, credentials:include)
+  server/                   백엔드(Express + TS) — OAuth + Copilot SDK
+    src/routes|lib|middleware|util ...
+    .env.example            백엔드 환경변수 템플릿
 ```
 
-AI 응답 형식:
+## GitHub Copilot 단일 경로 인증 구조
 
-```jsonc
-{ "message": "로그인 흐름을 제안했습니다.", "operations": [ { "type": "addNode", "node": { /* ... */ } } ] }
+1. 사용자가 "GitHub로 로그인" 클릭 → 백엔드 `/api/auth/github`가 `state`(CSRF) 발급 후 GitHub authorize로 리다이렉트.
+2. 콜백에서 `code`를 user access token으로 **server-to-server** 교환 → **httpOnly·Secure·SameSite=Lax 쿠키 세션**에 저장(프론트로 토큰 안 보냄).
+3. 프론트는 `/api/auth/me`로 로그인 여부·Copilot 권한만 확인.
+4. AI 요청은 `/api/ai/copilot` → 백엔드가 세션 토큰으로 `@github/copilot-sdk` 호출 → 응답을 `{message, operations}`로 변환해 반환.
+5. 사용자가 **적용하기**를 누르기 전까지 캔버스 미반영.
+
+## 실행 방법
+
+### 프론트엔드
+```bash
+npm install
+cp .env.example .env.local      # 필요 시 VITE_API_BASE 수정
+npm run dev                     # http://localhost:5173
+npm run build                   # 타입체크(tsc) + 프로덕션 빌드
+```
+> 기본은 **데모 모드**(`src/ai/providers/index.ts`의 `USE_MOCK = true`). 백엔드 없이 mock AI로 전체 흐름을 바로 체험할 수 있다(로그인은 데모 사용자로 자동 처리). 실제 Copilot 연동은 `USE_MOCK = false`.
+
+### 백엔드
+```bash
+cd server
+npm install
+cp .env.example .env            # 아래 환경변수 채우기
+npm run dev                     # 기본 http://localhost:8787
 ```
 
-지원 operation: `addNode` `updateNode` `deleteNode` `addEdge` `updateEdge` `deleteEdge` `moveNode` `layoutDiagram`.
+## GitHub OAuth App 생성 방법
 
-### 실제 AI API 연동 (현재는 mock)
+1. GitHub → **Settings → Developer settings → OAuth Apps(또는 GitHub Apps) → New**.
+2. **Authorization callback URL**: `http://localhost:8787/api/auth/github/callback` (배포 시 실제 도메인).
+3. 발급된 **Client ID / Client secret**을 백엔드 `.env`에 입력.
 
-- 초기 버전은 `ai/providers/mockProvider.ts`(규칙 기반)로 동작한다.
-- 실제 연동 시 `ai/providers/index.ts` 의 `USE_MOCK = false` 로 바꾼다.
-- 각 provider 는 자체 백엔드 `/api/ai/<model>` 만 호출한다. **API Key는 프론트에 두지 않고 백엔드가 보관**한다.
-- provider 는 공통 인터페이스를 따른다:
+## 환경변수
 
-```ts
-interface AIProvider {
-  name: string;
-  generateDiagramEdit(input: DiagramAIRequest): Promise<DiagramAIResponse>;
-}
+**프론트 (`.env.local`)**
+```
+VITE_API_BASE=http://localhost:8787
+```
+**백엔드 (`server/.env`)** — `.env`는 절대 커밋하지 않는다(`.env.example`만 제공).
+```
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GITHUB_CALLBACK_URL=http://localhost:8787/api/auth/github/callback
+SESSION_SECRET=
+FRONTEND_ORIGIN=http://localhost:5173
+NODE_ENV=development
+PORT=8787
 ```
 
----
+## 학생용 안내 (GitHub Education / Copilot)
 
-## VS Code + GitHub Copilot 개발 가이드 (학생용)
+1. GitHub 계정을 만든다.
+2. [GitHub Education](https://education.github.com/) 학생 인증을 진행한다(학교 이메일/재학 증명).
+3. GitHub Copilot 사용 권한이 활성화됐는지 확인한다(Student Developer Pack에 Copilot 포함).
+4. 이 웹사이트에서 **"GitHub로 로그인"** 버튼을 누른다.
+5. 본인 GitHub 계정으로 로그인한다.
+6. 오른쪽 AI Assistant 패널에서 자연어로 다이어그램 생성을 요청한다 (예: "회원가입 플로우 만들어줘").
+7. AI가 제안한 변경사항을 확인한 뒤 **"적용하기"**를 누른다.
 
-이 프로젝트는 VS Code + GitHub Copilot으로 이어서 개발하기 좋게 구성돼 있다.
+> AI 토큰 비용은 **본인 Copilot 쿼터**에서 차감된다(운영자 부담 아님).
 
-### 1. GitHub Education 학생 인증
-1. https://education.github.com/ 접속 → **Get benefits(Student)** 신청.
-2. 학교 이메일 또는 재학 증명으로 인증(보통 며칠 내 승인).
-3. 승인되면 **GitHub Copilot 무료** 등 Student Developer Pack 혜택을 받는다.
+## 보안 주의사항
 
-### 2. VS Code 설치
-- https://code.visualstudio.com/ 에서 OS에 맞게 설치.
-- 권장 확장: **ESLint**, **Prettier**, **TypeScript**(기본 내장).
+- GitHub token은 **프론트로 전달하지 않고** localStorage/sessionStorage에도 저장하지 않는다(httpOnly 쿠키 세션만).
+- 세션 쿠키는 `httpOnly`·`Secure`(프로덕션)·`SameSite=Lax`.
+- OAuth `state`로 CSRF 방어. `client_secret`은 서버 환경변수에만.
+- 로그에 access token / client secret을 출력하지 않는다(`util/logRedact`로 마스킹).
+- 로그아웃 시 서버 세션 폐기 + 쿠키 클리어. 세션 만료(maxAge) 적용.
+- AI 호출 실패 시 사용자에게는 **안전한 에러 메시지만** 노출(스택/토큰 0).
 
-### 3. GitHub Copilot 확장 설치
-1. VS Code → Extensions(`Ctrl+Shift+X`)에서 **GitHub Copilot** 과 **GitHub Copilot Chat** 설치.
-2. 우하단 안내로 GitHub 로그인(학생 인증된 계정).
-3. 코드 작성 중 회색 제안이 뜨면 `Tab`으로 수락.
+## 개발 순서 (구현 단계)
 
-### 4. Copilot Chat 사용법
-- `Ctrl+Alt+I`(또는 사이드바 Chat 아이콘)로 Chat 패널 열기.
-- 파일을 연 채 질문하면 해당 파일을 문맥으로 답한다. `/explain`, `/fix`, `/tests` 슬래시 명령 활용.
-- 코드 블록 선택 후 우클릭 → **Copilot** 메뉴로 인라인 수정 요청 가능.
+1. React 3단 레이아웃 + 팔레트/캔버스 + 블록 추가·이동·삭제.
+2. 텍스트 수정 + 연결선(+자동 위치 갱신) + JSON 저장/불러오기.
+3. AI 패널 UI + mockProvider + operations 미리보기/적용/취소 + 검증.
+4. 백엔드: GitHub OAuth + 세션 쿠키 + `/api/auth/me`·`/logout`.
+5. `@github/copilot-sdk` + `/api/ai/copilot` + 프론트 연결(`USE_MOCK=false`).
+6. 에러/권한없음/세션만료 처리 + 보안 점검.
 
-### 5. (Copilot Chat의) 모델 선택 드롭다운 사용법
-- Copilot Chat 입력창 하단/우측의 **모델 선택 드롭다운**에서 사용할 모델을 고른다.
-- 단순 자동완성은 빠른 모델, 복잡한 리팩터링·설계는 더 강한 모델을 선택하면 좋다.
-- (참고) 이 앱의 우측 AI Assistant 패널에도 동일한 컨셉의 모델 드롭다운이 있다 — UI와 호출 로직이
-  분리돼 있어 나중에 실제 모델을 붙이기 쉽다.
+## ⚠️ 알려진 한계 (정직하게)
 
-### 6. 이 프로젝트에서 Copilot에게 줄 추천 프롬프트
-
-> 이 프로젝트는 draw.io와 비슷한 웹 기반 다이어그램 편집기입니다.
-> 왼쪽 블록 팔레트, 중앙 캔버스, 오른쪽 AI Assistant 패널로 구성됩니다.
-> 블록 타입은 사용자 원형, 사각형, 마름모, 둥근 사각형입니다.
-> 현재 다이어그램 상태는 nodes와 edges JSON으로 관리합니다.
-> AI Assistant는 사용자의 자연어 요청을 받아 다이어그램 수정 operations JSON을 생성해야 합니다.
-> React 컴포넌트 구조를 유지하면서 기능을 단계적으로 구현해주세요.
-> 먼저 UI 레이아웃을 만들고, 그다음 블록 드래그 앤 드롭, 연결선, 저장/불러오기, AI Assistant 패널 순서로 구현해주세요.
-
-추가로 유용한 작업별 프롬프트:
-- "`ai/providers/claudeProvider.ts`가 실제 Claude API를 백엔드 경유로 호출하도록 구현해줘. API Key는 프론트에 넣지 말고 `/api/ai/claude` 엔드포인트를 쓰는 전제로."
-- "`mockProvider`에 '결제 플로우' 시나리오를 키워드 매칭으로 추가해줘. 기존 규칙 테이블 형식을 따라줘."
-- "`diagramBridge.ts`의 `layout()`을 위→아래(TB) 방향도 더 깔끔하게 배치하도록 개선해줘."
+- **Copilot SDK(`@github/copilot-sdk` v1.x)는 단발 chat-completion이 아니라 로컬 Copilot CLI 런타임을 구동**하는 방식이다.
+  서버 머신에 해당 플랫폼 런타임 바이너리 + 유효한 Copilot 인증이 있어야 실제 호출이 성공한다. 배포 환경(리눅스 컨테이너 등)에서 별도 검증 필요.
+- 다음은 **공식 문서 확인 필요**로 코드에 `// TODO` 표기됨: Copilot 접근용 정확한 OAuth scope명, Copilot 권한 확인 API, SDK 모델 매핑.
+- 현재 기본은 데모(mock) 모드 — 실제 Copilot 호출은 위 런타임 조건을 갖춘 뒤 `USE_MOCK=false`로 검증한다.

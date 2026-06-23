@@ -15,6 +15,8 @@ export interface AINode {
   width: number;
   height: number;
   label: string;
+  /** Layer order. JSON 저장/복원용(없으면 불러올 때 순서대로 부여). */
+  zIndex?: number;
 }
 
 export interface AIEdge {
@@ -22,6 +24,8 @@ export interface AIEdge {
   source: string;
   target: string;
   label?: string;
+  /** Layer order. JSON 저장/복원용. */
+  zIndex?: number;
 }
 
 export interface DiagramGraph {
@@ -53,34 +57,27 @@ export const OPERATION_TYPES: OperationType[] = [
   "layoutDiagram",
 ];
 
-/** 선택 가능한 모델. UI 표시용 + provider registry 키. */
-export type AIModelId = "copilot" | "claude" | "gpt" | "gemini" | "local";
-
-export interface AIModelOption {
-  id: AIModelId;
-  label: string;
-}
-
-export const AI_MODELS: AIModelOption[] = [
-  { id: "copilot", label: "GitHub Copilot" },
-  { id: "claude", label: "Claude" },
-  { id: "gpt", label: "GPT" },
-  { id: "gemini", label: "Gemini" },
-  { id: "local", label: "Local Model" },
-];
-
-/** provider 에 전달하는 요청. */
+/** provider 에 전달하는 요청. 이번 버전은 GitHub Copilot 단일 경로(모델 선택 없음). */
 export interface DiagramAIRequest {
   /** 사용자의 자연어 요청. */
   prompt: string;
   /** 현재 캔버스 상태(단순 그래프). */
   diagram: DiagramGraph;
-  /** 사용 가능한 블록 타입 목록. */
-  availableNodeTypes: AINodeType[];
+  /** 사용 가능한 블록 타입 목록(외부 표기: rounded-rectangle). */
+  availableNodeTypes: string[];
   /** 현재 선택된 블록 정보(없으면 비어 있음). */
   selectedNodes: AINode[];
-  /** 현재 선택된 모델명. */
-  model: AIModelId;
+  /** 현재 선택된 블록 id(없으면 null). */
+  selectedNodeId: string | null;
+}
+
+// ---- 인증(GitHub OAuth) ----
+export type AuthStatus = "loading" | "anonymous" | "authenticated";
+
+export interface GitHubUser {
+  login: string;
+  name?: string;
+  avatarUrl?: string;
 }
 
 /** provider 가 반환하는 응답. */

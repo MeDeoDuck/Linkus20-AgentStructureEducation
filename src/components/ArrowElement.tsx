@@ -10,6 +10,7 @@ import {
 } from "../utils/anchors";
 import { isRefSelected } from "../utils/selection";
 import { useSelectionGestures } from "../hooks/useSelectionGestures";
+import { useViewportStore } from "../store/useViewportStore";
 
 interface ArrowElementProps {
   arrow: Arrow;
@@ -41,6 +42,15 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
 
   const selected = isRefSelected({ type: "arrow", id: arrow.id }, selection);
   const isOnly = selected && selection.length === 1;
+
+  const openContextMenu = useViewportStore((s) => s.openContextMenu);
+  const onContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const ref = { type: "arrow" as const, id: arrow.id };
+    if (!isRefSelected(ref, useDiagramStore.getState().selection)) select(arrow.id, "arrow");
+    openContextMenu(e.clientX, e.clientY, ref);
+  };
 
   // Local endpoints (pivot at origin).
   const x1 = 0;
@@ -88,11 +98,12 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
     const sy = e.clientY;
     const ox = arrow.x;
     const oy = arrow.y;
+    const zoom = useViewportStore.getState().zoom;
     let detached = false;
     let begun = false;
     const onMove = (ev: PointerEvent) => {
-      const dx = ev.clientX - sx;
-      const dy = ev.clientY - sy;
+      const dx = (ev.clientX - sx) / zoom;
+      const dy = (ev.clientY - sy) / zoom;
       // Only detach once the user actually drags (not on a select-click), so a
       // connected arrow isn't unhooked by a stray tap.
       if (!detached && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
@@ -186,14 +197,15 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
     const sy = e.clientY;
     const oc = arrow.curve;
     const rad = (-arrow.rotation * Math.PI) / 180;
+    const zoom = useViewportStore.getState().zoom;
     let begun = false;
     const onMove = (ev: PointerEvent) => {
       if (!begun) {
         beginHistory();
         begun = true;
       }
-      const dx = ev.clientX - sx;
-      const dy = ev.clientY - sy;
+      const dx = (ev.clientX - sx) / zoom;
+      const dy = (ev.clientY - sy) / zoom;
       const localDy = dx * Math.sin(rad) + dy * Math.cos(rad);
       updateArrow(arrow.id, { curve: oc - localDy });
     };
@@ -239,9 +251,16 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
   const rotY = y2 - 22;
 
   return (
-    <g transform={`translate(${arrow.x},${arrow.y}) rotate(${arrow.rotation})`}>
+    <svg
+      className="arrow-el"
+      width={2400}
+      height={1600}
+      viewBox="0 0 2400 1600"
+      style={{ zIndex: arrow.zIndex }}
+    >
+      <g transform={`translate(${arrow.x},${arrow.y}) rotate(${arrow.rotation})`}>
       {/* Wide invisible hit area for selecting / dragging the body */}
-      <path className="arrow-hit" d={pathD} onPointerDown={startBodyDrag} />
+      <path className="arrow-hit" d={pathD} onPointerDown={startBodyDrag} onContextMenu={onContextMenu} />
       <path className={`arrow-line${selected ? " arrow-line--selected" : ""}`} d={pathD} />
       <polygon
         points={`${ax},${ay} ${ahx1},${ahy1} ${ahx2},${ahy2}`}
@@ -293,6 +312,7 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
           />
         </g>
       )}
-    </g>
+      </g>
+    </svg>
   );
 }

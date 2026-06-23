@@ -1,4 +1,5 @@
 import { useDiagramStore } from "../store/useDiagramStore";
+import { useViewportStore } from "../store/useViewportStore";
 import { getSelectionRect, type Rect } from "../utils/selection";
 import {
   SMART_SNAP_THRESHOLD,
@@ -43,13 +44,14 @@ export function useSelectionGestures(): SelectionGestures {
     const before = getSelectionRect(st.selection, st);
     if (!before) return;
     const others = unselectedBounds();
+    const zoom = useViewportStore.getState().zoom;
     let lastDx = 0;
     let lastDy = 0;
     let begun = false;
 
     const onMove = (ev: PointerEvent) => {
-      const rawDx = ev.clientX - startX;
-      const rawDy = ev.clientY - startY;
+      const rawDx = (ev.clientX - startX) / zoom;
+      const rawDy = (ev.clientY - startY) / zoom;
       if (!begun && (Math.abs(rawDx) > 2 || Math.abs(rawDy) > 2)) {
         beginHistory();
         begun = true;
@@ -88,6 +90,7 @@ export function useSelectionGestures(): SelectionGestures {
     if (!before) return;
     const origin = { blocks: st.blocks, arrows: st.arrows, images: st.images };
     const ratio = before.height ? before.width / before.height : 1;
+    const zoom = useViewportStore.getState().zoom;
     let begun = false;
 
     const onMove = (ev: PointerEvent) => {
@@ -95,8 +98,8 @@ export function useSelectionGestures(): SelectionGestures {
         beginHistory();
         begun = true;
       }
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
       let { x, y, width, height } = before;
       if (dir.includes("e")) width = Math.max(MIN_GROUP_W, before.width + dx);
       if (dir.includes("w")) {

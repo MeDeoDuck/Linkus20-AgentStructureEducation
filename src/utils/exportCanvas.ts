@@ -1,4 +1,5 @@
 import { toPng } from "html-to-image";
+import { CANVAS_H, CANVAS_W } from "./anchors";
 
 interface SaveFilePickerOptions {
   suggestedName?: string;
@@ -114,6 +115,10 @@ export async function exportCanvasToPng(
     cacheBust: true,
     backgroundColor: "#ffffff",
     pixelRatio: 2,
+    // 줌(transform: scale) 무시하고 원본 2400x1600 으로 캡처.
+    width: CANVAS_W,
+    height: CANVAS_H,
+    style: { transform: "none", transformOrigin: "0 0" },
     // Skip any element flagged as no-export (selection handles, etc.)
     filter: (el) => {
       if (el instanceof HTMLElement && el.dataset.noExport === "true") return false;

@@ -1,30 +1,21 @@
 /**
- * Provider registry. 모델 선택 UI(AIModelId)와 실제 호출 로직을 분리한다.
+ * Provider registry — 이번 버전은 GitHub Copilot 단일 경로(모델 선택 없음).
  *
- * USE_MOCK=true 이면 어떤 모델을 골라도 mockProvider 가 응답한다(백엔드 없이 데모 가능).
- * 백엔드를 붙이면 USE_MOCK 을 false 로 바꾸기만 하면 모델별 실 provider 가 동작한다.
+ * USE_MOCK=true  → 백엔드 없이 mockProvider(규칙 기반)로 데모.
+ * USE_MOCK=false → copilotProvider(백엔드 /api/ai/copilot → Copilot SDK).
  */
-import type { AIModelId, AIProvider } from "../types";
+import type { AIProvider } from "../types";
 import { mockProvider } from "./mockProvider";
 import { copilotProvider } from "./copilotProvider";
-import { claudeProvider } from "./claudeProvider";
-import { openaiProvider } from "./openaiProvider";
-import { geminiProvider } from "./geminiProvider";
-import { localProvider } from "./localProvider";
 
-/** 초기 버전: 실제 AI API 미연동 → mock 사용. 백엔드 연동 시 false 로. */
-export const USE_MOCK = true;
+/**
+ * 백엔드 연동 전 데모용. 기본 true(데모), 프로덕션 빌드에서는 VITE_USE_MOCK=false 로 끈다.
+ * (소스 상수 하드코딩 시 끄는 것을 깜빡할 위험 → env 로 관리)
+ */
+export const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
 
-const REAL_PROVIDERS: Record<AIModelId, AIProvider> = {
-  copilot: copilotProvider,
-  claude: claudeProvider,
-  gpt: openaiProvider,
-  gemini: geminiProvider,
-  local: localProvider,
-};
-
-export function getProvider(model: AIModelId): AIProvider {
-  return USE_MOCK ? mockProvider : REAL_PROVIDERS[model];
+export function getProvider(): AIProvider {
+  return USE_MOCK ? mockProvider : copilotProvider;
 }
 
-export { mockProvider };
+export { mockProvider, copilotProvider };

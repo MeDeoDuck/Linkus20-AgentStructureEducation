@@ -76,6 +76,7 @@ export async function fileToImageElement(
     src,
     fileName: file.name,
     aspectRatio: width / height,
+    zIndex: 0, // addImageElement 가 추가 시점에 nextZ 로 덮어씀
   };
 }
 

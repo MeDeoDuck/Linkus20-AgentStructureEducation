@@ -1,4 +1,7 @@
+import { useRef } from "react";
 import { useDiagramStore } from "../store/useDiagramStore";
+import { useViewportStore } from "../store/useViewportStore";
+import { graphToSlice, parseDiagramGraph, serializeGraph, toGraph } from "../ai/diagramBridge";
 
 interface TopBarProps {
   onSave: () => void;
@@ -21,8 +24,43 @@ export default function TopBar({ onSave, onSaveSized, saving }: TopBarProps) {
   const alignSelection = useDiagramStore((s) => s.alignSelection);
   const distributeSelection = useDiagramStore((s) => s.distributeSelection);
 
+  const zoom = useViewportStore((s) => s.zoom);
+  const zoomIn = useViewportStore((s) => s.zoomIn);
+  const zoomOut = useViewportStore((s) => s.zoomOut);
+  const resetZoom = useViewportStore((s) => s.resetZoom);
+
   const multi = selection.length >= 2;
   const many = selection.length >= 3;
+
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleExportJson = () => {
+    const { blocks, arrows, title: t } = useDiagramStore.getState();
+    const data = serializeGraph(toGraph(blocks, arrows));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${t || "diagram"}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const handleImportJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 같은 파일 재선택 허용
+    if (!file) return;
+    try {
+      const graph = parseDiagramGraph(JSON.parse(await file.text()));
+      const { blocks, arrows } = graphToSlice(graph);
+      const lostEdges = graph.edges.length - arrows.length;
+      useDiagramStore.getState().loadDiagram(blocks, arrows);
+      if (lostEdges > 0) {
+        alert(`불러왔습니다. 단, source/target 노드를 찾지 못한 연결선 ${lostEdges}개는 제외되었습니다.`);
+      }
+    } catch (err) {
+      alert(`불러오기 실패: ${err instanceof Error ? err.message : "올바른 다이어그램 JSON이 아닙니다."}`);
+    }
+  };
 
   return (
     <header className="topbar">
@@ -70,6 +108,20 @@ export default function TopBar({ onSave, onSaveSized, saving }: TopBarProps) {
       </div>
 
       <div className="topbar__spacer" />
+      <div className="topbar__zoom" title="Ctrl + 휠로 확대/축소">
+        <button className="tool-btn" onClick={zoomOut} aria-label="축소">−</button>
+        <button className="tool-btn topbar__zoom-val" onClick={resetZoom} title="100%로 초기화">
+          {Math.round(zoom * 100)}%
+        </button>
+        <button className="tool-btn" onClick={zoomIn} aria-label="확대">+</button>
+      </div>
+      <button className="btn" onClick={() => fileRef.current?.click()} title="JSON 불러오기">
+        불러오기
+      </button>
+      <button className="btn" onClick={handleExportJson} title="다이어그램을 JSON으로 저장">
+        JSON 저장
+      </button>
+      <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={handleImportJson} />
       <button
         className="btn"
         onClick={onSaveSized}

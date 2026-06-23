@@ -1,5 +1,6 @@
 import type { DiagramBlock } from "../types";
 import { useDiagramStore } from "../store/useDiagramStore";
+import { useViewportStore } from "../store/useViewportStore";
 import {
   SMART_SNAP_THRESHOLD,
   calculateSmartSnapOnResize,
@@ -37,6 +38,7 @@ export default function ResizeHandles({ block }: ResizeHandlesProps) {
     const startX = e.clientX;
     const startY = e.clientY;
     const orig = { x: block.x, y: block.y, width: block.width, height: block.height };
+    const zoom = useViewportStore.getState().zoom;
     let begun = false;
 
     const onMove = (ev: PointerEvent) => {
@@ -44,8 +46,8 @@ export default function ResizeHandles({ block }: ResizeHandlesProps) {
         beginHistory();
         begun = true;
       }
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
       let { x, y, width, height } = orig;
 
       if (dir.includes("e")) width = Math.max(MIN, orig.width + dx);

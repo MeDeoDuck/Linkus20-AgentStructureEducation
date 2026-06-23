@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AIType, DiagramBlock as Block } from "../types";
 import { useDiagramStore } from "../store/useDiagramStore";
+import { useViewportStore } from "../store/useViewportStore";
 import ResizeHandles from "./ResizeHandles";
 import BlockLogoView from "./BlockLogoView";
 import AIModal from "./AIModal";
@@ -77,7 +78,7 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
       moved: false,
     };
 
-    const scale = 1; // canvas is unscaled
+    const scale = useViewportStore.getState().zoom; // 화면 px → 캔버스 px 보정
     const onMove = (ev: PointerEvent) => {
       const ds = dragState.current;
       if (!ds.active) return;
@@ -123,6 +124,15 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
     setModalOpen(true);
   };
 
+  const openContextMenu = useViewportStore((s) => s.openContextMenu);
+  const onContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const ref = { type: "block" as const, id: block.id };
+    if (!isRefSelected(ref, useDiagramStore.getState().selection)) select(block.id, "block");
+    openContextMenu(e.clientX, e.clientY, ref);
+  };
+
   const commitText = () => {
     updateBlock(block.id, { text: draftText });
     setEditingText(false);
@@ -154,11 +164,23 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
           `block--${block.type}`,
           selected ? "block--selected" : "",
         ].join(" ")}
-        style={{ left: block.x, top: block.y, width: block.width, height: block.height }}
+        style={{ left: block.x, top: block.y, width: block.width, height: block.height, zIndex: block.zIndex }}
         onPointerDown={onPointerDown}
         onDoubleClick={onDoubleClick}
+        onContextMenu={onContextMenu}
       >
-        {isDiamond && <div className="block__diamond-shape" />}
+        {isDiamond && (
+          <svg className="block__diamond-svg" width={block.width} height={block.height}>
+            {/* 네 꼭짓점(위·오른쪽·아래·왼쪽) 기준 진짜 마름모. width≠height 여도 변형 없음. */}
+            <polygon
+              points={`${block.width / 2},0 ${block.width},${block.height / 2} ${block.width / 2},${block.height} 0,${block.height / 2}`}
+              fill="var(--bg)"
+              stroke={selected ? "var(--accent)" : "var(--border-strong)"}
+              strokeWidth={selected ? 3 : 1.5}
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+        )}
         <div className="block__content">
           {logo ? (
             <BlockLogoView key={logo.logoUrl ?? logo.name} logo={logo} block={block} />

@@ -10,6 +10,7 @@ import {
 } from "../utils/smartGuides";
 import { isRefSelected } from "../utils/selection";
 import { useSelectionGestures } from "../hooks/useSelectionGestures";
+import { useViewportStore } from "../store/useViewportStore";
 
 interface ImageElementViewProps {
   img: ImageElement;
@@ -39,9 +40,18 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
   const clearSmartGuides = useDiagramStore((s) => s.clearSmartGuides);
   const beginHistory = useDiagramStore((s) => s.beginHistory);
   const { startMove } = useSelectionGestures();
+  const openContextMenu = useViewportStore((s) => s.openContextMenu);
 
   const selected = isRefSelected({ type: "image", id: img.id }, selection);
   const isOnly = selected && selection.length === 1;
+
+  const onContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const ref = { type: "image" as const, id: img.id };
+    if (!isRefSelected(ref, useDiagramStore.getState().selection)) select(img.id, "image");
+    openContextMenu(e.clientX, e.clientY, ref);
+  };
 
   const onPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
@@ -63,6 +73,7 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
     const sy = e.clientY;
     const ox = img.x;
     const oy = img.y;
+    const zoom = useViewportStore.getState().zoom;
     let begun = false;
     const onMove = (ev: PointerEvent) => {
       if (!begun && (Math.abs(ev.clientX - sx) > 2 || Math.abs(ev.clientY - sy) > 2)) {
@@ -74,8 +85,8 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
       const cur = st.images.find((im) => im.id === img.id);
       const w = cur?.width ?? img.width;
       const h = cur?.height ?? img.height;
-      let nx = Math.min(Math.max(0, ox + (ev.clientX - sx)), CANVAS_W - w);
-      let ny = Math.min(Math.max(0, oy + (ev.clientY - sy)), CANVAS_H - h);
+      let nx = Math.min(Math.max(0, ox + (ev.clientX - sx) / zoom), CANVAS_W - w);
+      let ny = Math.min(Math.max(0, oy + (ev.clientY - sy) / zoom), CANVAS_H - h);
 
       const moving = getElementBounds({ id: img.id, x: nx, y: ny, width: w, height: h });
       const others = collectBounds(st.blocks, st.images, img.id);
@@ -104,6 +115,7 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
     const orig = { x: img.x, y: img.y, width: img.width, height: img.height };
     const ar = img.aspectRatio || orig.width / orig.height || 1;
     const isCorner = dir.length === 2;
+    const zoom = useViewportStore.getState().zoom;
     let begun = false;
 
     const onMove = (ev: PointerEvent) => {
@@ -111,8 +123,8 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
         beginHistory();
         begun = true;
       }
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
+      const dx = (ev.clientX - startX) / zoom;
+      const dy = (ev.clientY - startY) / zoom;
       let { x, y, width, height } = orig;
 
       if (dir.includes("e")) width = Math.max(MIN, orig.width + dx);
@@ -170,8 +182,9 @@ export default function ImageElementView({ img }: ImageElementViewProps) {
   return (
     <div
       className={`image-el${selected ? " image-el--selected" : ""}`}
-      style={{ left: img.x, top: img.y, width: img.width, height: img.height }}
+      style={{ left: img.x, top: img.y, width: img.width, height: img.height, zIndex: img.zIndex }}
       onPointerDown={onPointerDown}
+      onContextMenu={onContextMenu}
     >
       <img className="image-el__img" src={img.src} alt={img.fileName ?? ""} draggable={false} />
       {isOnly &&
