@@ -1,10 +1,13 @@
 # Linkus20 — 블록 기반 다이어그램 편집기 + GitHub Copilot AI Assistant
 
 draw.io와 비슷하지만 **자유 드로잉이 아니라, 미리 정의된 블록을 배치·연결**해 다이어그램을 만드는 웹 편집기.
-오른쪽 패널은 **GitHub Copilot 단일 경로** AI Assistant — 사용자가 GitHub 계정으로 로그인하면
-**본인 Copilot 구독/학생 인증 권한·쿼터로** 자연어 다이어그램 생성/수정을 받는다. AI 비용은 서비스 운영자가 아닌 **사용자 본인 부담**.
+오른쪽 패널은 AI Assistant — 사용자가 **개인 GitHub 계정으로 로그인**하면 본인 토큰으로
+**GitHub Models API**를 호출해 자연어 다이어그램 생성/수정을 받는다. AI 비용은 서비스 운영자가 아닌 **사용자 본인 계정** 기준.
 
-> 모델 선택 없음. Claude/GPT/Gemini/BYOK 제외. **GitHub Copilot 한 가지만** 지원.
+> ⚠️ **AI 경로 변경(중요):** 초기엔 GitHub Copilot SDK 단일 경로였으나, Copilot SDK 의 agent 기능은
+> **개인/학생 Copilot 계정에서 조직 정책 없이는 막힌다**(`requires an enterprise or organization policy`).
+> 따라서 실제 AI 호출을 **GitHub Models API**로 변경했다. GitHub OAuth 로그인·세션·프론트 패널은 그대로 유지.
+> OAuth scope 에 `models:read` 가 필요하며, **scope 변경 후에는 로그아웃 → 재로그인해야** 새 권한이 적용된다.
 
 ## 주요 기능
 
@@ -63,7 +66,7 @@ AIAgentSimulation/
 1. 사용자가 "GitHub로 로그인" 클릭 → 백엔드 `/api/auth/github`가 `state`(CSRF) 발급 후 GitHub authorize로 리다이렉트.
 2. 콜백에서 `code`를 user access token으로 **server-to-server** 교환 → **httpOnly·Secure·SameSite=Lax 쿠키 세션**에 저장(프론트로 토큰 안 보냄).
 3. 프론트는 `/api/auth/me`로 로그인 여부·Copilot 권한만 확인.
-4. AI 요청은 `/api/ai/copilot` → 백엔드가 세션 토큰으로 `@github/copilot-sdk` 호출 → 응답을 `{message, operations}`로 변환해 반환.
+4. AI 요청은 `/api/ai/copilot`(경로명은 호환 위해 유지) → 백엔드가 세션 토큰으로 **GitHub Models API**(`https://models.github.ai/inference/chat/completions`) 호출 → 응답을 정규화해 `{message, operations}`로 반환.
 5. 사용자가 **적용하기**를 누르기 전까지 캔버스 미반영.
 
 ## 실행 방법
@@ -103,9 +106,10 @@ GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 GITHUB_CALLBACK_URL=http://localhost:8787/api/auth/github/callback
 SESSION_SECRET=
-FRONTEND_ORIGIN=http://localhost:5173
+GITHUB_MODELS_MODEL=openai/gpt-4o-mini
 NODE_ENV=development
 PORT=8787
+# FRONTEND_ORIGIN 은 분리 배포일 때만(같은 도메인 단일 배포면 비워둠)
 ```
 
 ## 학생용 안내 (GitHub Education / Copilot)

@@ -51,7 +51,7 @@ export default function AIAssistantPanel() {
   return (
     <aside className="ai-panel">
       <header className="ai-panel__header">
-        <span className="ai-panel__title">✨ GitHub Copilot</span>
+        <span className="ai-panel__title">✨ GitHub Models AI</span>
         <div className="ai-panel__header-actions">
           <button className="ai-icon-btn" onClick={clearChat} title="대화 비우기">🗑</button>
           <button className="ai-collapse-btn" onClick={toggleCollapsed} title="AI 패널 접기">▶</button>
@@ -80,7 +80,7 @@ export default function AIAssistantPanel() {
         {messages.map((m) => (
           <div key={m.id} className={`ai-msg ai-msg--${m.role}`}>
             <div className="ai-msg__role">
-              {m.role === "user" ? "나" : m.role === "assistant" ? "Copilot" : "시스템"}
+              {m.role === "user" ? "나" : m.role === "assistant" ? "AI" : "시스템"}
               {m.applied && <span className="ai-msg__applied"> · 적용됨</span>}
             </div>
             <div className="ai-msg__text">{m.text}</div>
@@ -118,8 +118,8 @@ export default function AIAssistantPanel() {
         {!canUse && (
           <div className="ai-gate">
             {authStatus !== "authenticated"
-              ? "GitHub로 로그인 후 Copilot 기능을 사용할 수 있습니다."
-              : "현재 GitHub 계정에서 Copilot 사용 권한을 확인할 수 없습니다. Copilot 구독 또는 학생 인증 상태를 확인해 주세요."}
+              ? "GitHub로 로그인 후 AI 기능을 사용할 수 있습니다."
+              : "현재 GitHub 계정에서 GitHub Models 사용 권한을 확인할 수 없습니다. 다시 로그인하거나 GitHub Models 사용 설정을 확인해 주세요."}
           </div>
         )}
         <textarea

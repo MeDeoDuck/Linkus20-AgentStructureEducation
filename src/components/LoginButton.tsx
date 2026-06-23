@@ -30,7 +30,7 @@ export default function LoginButton() {
           <div className="ai-auth__meta">
             <div className="ai-auth__name">{user.name || user.login}</div>
             <div className={`ai-auth__copilot ${copilotAvailable ? "ok" : "no"}`}>
-              {copilotAvailable ? "● Copilot 사용 가능" : "○ Copilot 권한 없음"}
+              {copilotAvailable ? "● GitHub Models 연결됨" : "○ GitHub 계정으로 AI 사용"}
             </div>
           </div>
         </div>

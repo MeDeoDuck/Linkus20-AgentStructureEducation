@@ -37,10 +37,9 @@ export const config = {
     clientId: optional("GITHUB_CLIENT_ID", ""),
     clientSecret: optional("GITHUB_CLIENT_SECRET", ""),
     callbackUrl: optional("GITHUB_CALLBACK_URL", ""),
-    // TODO: 공식 문서 확인 필요 — Copilot 접근에 필요한 정확한 OAuth scope.
-    //  read:user 는 /user 조회용으로 확실. Copilot 관련 scope 는 추정값(placeholder).
-    //  GitHub OAuth scope 문서: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps
-    scope: "read:user copilot",
+    // read:user/user:email = 프로필·이메일 조회, models:read = GitHub Models API 호출 권한.
+    // ⚠️ scope 변경 후에는 기존 세션이 새 권한이 없으므로 로그아웃 → 재로그인 필요.
+    scope: "read:user user:email models:read",
   },
 
   session: {

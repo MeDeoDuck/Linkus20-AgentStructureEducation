@@ -71,11 +71,11 @@ export const useAIStore = create<AIState>((set, get) => ({
     // 로그인/권한 게이팅(UI 에서도 막지만 store 에서 한 번 더 방어).
     const auth = useAuthStore.getState();
     if (auth.status !== "authenticated") {
-      set({ error: "GitHub로 로그인 후 Copilot 기능을 사용할 수 있습니다." });
+      set({ error: "GitHub로 로그인 후 AI 기능을 사용할 수 있습니다." });
       return;
     }
     if (!auth.copilotAvailable) {
-      set({ error: "현재 GitHub 계정에서 Copilot 사용 권한을 확인할 수 없습니다. Copilot 구독 또는 학생 인증 상태를 확인해 주세요." });
+      set({ error: "현재 GitHub 계정에서 GitHub Models 사용 권한을 확인할 수 없습니다. 다시 로그인하거나 GitHub Models 사용 설정을 확인해 주세요." });
       return;
     }
 

@@ -17,9 +17,35 @@
  * 견고성: LLM 응답에서 코드펜스 제거 → 첫 '{' ~ 마지막 '}' 슬라이스 → JSON.parse
  *         → {message, operations} 형태 검증. 어느 단계든 실패하면 안전 에러로 throw.
  */
-import { CopilotClient, approveAll } from "@github/copilot-sdk";
-import { maskToken, registerSecret, safeLog } from "../util/logRedact.js";
+import { registerSecret, safeLog } from "../util/logRedact.js";
 import { normalizeDiagramOperations } from "./normalizeOps.js";
+
+/**
+ * AI 호출 = RunYourAI(OpenAI 호환 게이트웨이)로 GPT-4.1 호출.
+ * 운영자 키(서버 env) 사용 → 비용은 운영자 부담. 키/URL 은 프론트에 노출 안 함.
+ *  RUNYOURAI_BASE_URL: OpenAI 호환 base (예: https://.../v1) — 코드가 /chat/completions 를 붙임
+ *  RUNYOURAI_API_KEY : 게이트웨이 API 키
+ *  RUNYOURAI_MODEL   : 모델명(기본 gpt-4.1)
+ */
+const AI_BASE_URL = (process.env.RUNYOURAI_BASE_URL ?? "").replace(/\/$/, "");
+const AI_API_KEY = process.env.RUNYOURAI_API_KEY ?? "";
+const AI_MODEL = process.env.RUNYOURAI_MODEL ?? "gpt-4.1";
+
+/** status 코드를 담아 라우트가 사용자 친화 응답으로 매핑하게 한다. */
+export class GitHubModelsError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "AIError";
+  }
+}
+
+function friendlyModelsError(status: number): string {
+  if (status === 401) return "AI 인증에 실패했습니다(서버 키 확인 필요).";
+  if (status === 403) return "AI 사용 권한이 없습니다(서버 키 권한 확인 필요).";
+  if (status === 429) return "AI 사용 한도에 도달했습니다. 잠시 후 다시 시도해주세요.";
+  if (status >= 500) return "AI 호출 중 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+  return "AI 요청 처리 중 오류가 발생했습니다.";
+}
 
 /** 프론트(systemPrompt.ts)와 일치시킨 시스템 프롬프트. 4종 블록 + operations JSON only. */
 export const SYSTEM_PROMPT = `당신은 draw.io-lite 웹 다이어그램 편집기에 내장된 AI 어시스턴트입니다.
@@ -90,85 +116,70 @@ export interface CopilotCallInput {
   model?: string;
 }
 
-/** Copilot 에 보낼 user 메시지 본문 구성: 시스템지침 + 요청 + 컨텍스트 직렬화. */
-function buildPrompt(input: CopilotCallInput): string {
-  const system = input.system?.trim() ? input.system : SYSTEM_PROMPT;
-  const ctx = {
-    availableNodeTypes: input.availableNodeTypes,
-    diagram: input.diagram,
-    selectedNodes: input.selectedNodes ?? [],
-    selectedNodeId: input.selectedNodeId ?? null,
-  };
-  // SDK 세션은 system role 분리 주입이 까다로우므로(런타임이 자체 system prompt 관리),
-  // 지침을 프롬프트 앞에 명시적으로 박아 넣어 JSON-only 출력을 강제한다.
-  return [
-    system,
-    "",
-    "────────────────────────",
-    `사용자 요청:\n${input.prompt}`,
-    "",
-    "현재 컨텍스트(JSON):",
-    JSON.stringify(ctx),
-    "",
-    "위 컨텍스트를 반영해 operations JSON 한 객체만 반환하십시오. 코드펜스·설명 금지.",
-  ].join("\n");
-}
-
 /**
- * Copilot 호출 → {message, operations} 반환.
- * @throws 안전한 에러(토큰 미포함)만 던진다.
+ * GitHub Models REST API 로 다이어그램 operations 생성 → {message, operations} 반환.
+ * 사용자의 개인 GitHub access token(models:read)으로 호출 → 비용은 사용자 계정.
+ * (함수명은 프론트/라우트 호환을 위해 callCopilot 유지.)
+ * @throws GitHubModelsError(status 포함) — 라우트가 사용자 친화 응답으로 매핑.
  */
 export async function callCopilot(input: CopilotCallInput): Promise<DiagramAIResponse> {
-  // SDK 원본 에러에 토큰이 섞여 던져져도 로그에서 마스킹되도록 실제 값 등록(접두사 패턴 무관).
-  registerSecret(input.githubToken);
-  safeLog("[copilot] calling with token:", maskToken(input.githubToken));
+  if (!AI_API_KEY || !AI_BASE_URL) {
+    throw new GitHubModelsError(500, "AI가 설정되지 않았습니다(서버 키 미설정).");
+  }
+  // 응답/로그에 운영자 키가 섞여도 마스킹되도록 등록.
+  registerSecret(AI_API_KEY);
 
-  const client = new CopilotClient({
-    gitHubToken: input.githubToken,
-    useLoggedInUser: false,
+  const system = input.system?.trim() ? input.system : SYSTEM_PROMPT;
+  const userContent = JSON.stringify({
+    prompt: input.prompt,
+    diagram: input.diagram,
+    availableNodeTypes: input.availableNodeTypes,
+    selectedNodes: input.selectedNodes ?? [],
+    selectedNodeId: input.selectedNodeId ?? null,
   });
 
-  let rawText: string;
-  let session: Awaited<ReturnType<CopilotClient["createSession"]>> | undefined;
-
+  let res: Response;
   try {
-    // 1) 런타임 구동(로컬 Copilot CLI 런타임 필요).
-    await client.start();
-
-    // 2) 세션 생성. 권한 요청은 자동 승인(approveAll) — 우리는 텍스트 생성만 한다.
-    //    TODO: 공식 문서 확인 필요 — 모델명 표기(예: "gpt-4o" 등) 및 가용 모델은 client.listModels() 로 확인.
-    session = await client.createSession({
-      onPermissionRequest: approveAll,
-      ...(input.model ? { model: input.model } : {}),
+    res = await fetch(`${AI_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${AI_API_KEY}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.2,
+      }),
     });
-
-    // 3) 메시지 전송 후 최종 assistant 응답 대기.
-    const event = await session.sendAndWait({ prompt: buildPrompt(input) });
-    rawText = event?.data?.content ?? "";
-
-    if (!rawText) {
-      throw new Error("AI 응답이 비어 있습니다.");
-    }
-  } catch (err) {
-    // 토큰/내부정보가 메시지에 섞이지 않도록 일반화한 메시지만 노출.
-    safeLog("[copilot] call failed:", String(err));
-    throw new Error("AI 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.");
-  } finally {
-    // 4) 정리 — 세션/클라이언트 해제(메모리/런타임 누수 방지).
-    try {
-      await session?.disconnect();
-    } catch (e) {
-      safeLog("[copilot] session disconnect failed:", String(e));
-    }
-    try {
-      await client.stop();
-    } catch (e) {
-      safeLog("[copilot] client stop failed:", String(e));
-    }
+  } catch (e) {
+    safeLog("[ai] network error:", String(e));
+    throw new GitHubModelsError(502, "AI 호출 중 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
   }
 
-  // 파싱 후 정규화: Copilot 의 평탄/nodeType 구조를 프론트 표준 operation 형식으로 통일.
-  const parsed = parseDiagramResponse(rawText);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = (await res.text()).slice(0, 300);
+    } catch {
+      /* ignore */
+    }
+    safeLog(`[ai] HTTP ${res.status}:`, detail); // 본문은 마스킹 로그만(키 노출 0)
+    throw new GitHubModelsError(res.status, friendlyModelsError(res.status));
+  }
+
+  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new GitHubModelsError(502, "AI 응답이 비어 있습니다.");
+  }
+
+  // 파싱 후 정규화: 모델이 평탄/nodeType 구조를 줘도 프론트 표준 operation 형식으로 통일.
+  const parsed = parseDiagramResponse(content);
   return normalizeDiagramOperations(parsed);
 }
 

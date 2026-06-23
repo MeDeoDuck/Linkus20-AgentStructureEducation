@@ -8,7 +8,7 @@
  */
 import { Router, type Request, type Response } from "express";
 import { requireAuth } from "../middleware/requireAuth.js";
-import { callCopilot } from "../lib/copilot.js";
+import { callCopilot, GitHubModelsError } from "../lib/copilot.js";
 import { safeLog } from "../util/logRedact.js";
 
 export const aiRouter = Router();
@@ -61,9 +61,10 @@ aiRouter.post("/copilot", requireAuth, async (req: Request, res: Response) => {
     // {message, operations} 형태로만 반환(토큰/내부정보 0).
     res.json({ message: result.message, operations: result.operations });
   } catch (err) {
-    // callCopilot 은 이미 안전 메시지로 일반화해 throw 한다.
-    safeLog("[ai] copilot route error:", String(err));
+    // callCopilot(GitHub Models)은 안전 메시지 + status 를 담아 throw 한다.
+    safeLog("[ai] route error:", String(err));
+    const status = err instanceof GitHubModelsError && err.status >= 400 && err.status < 600 ? err.status : 502;
     const message = err instanceof Error ? err.message : "AI 처리 중 오류가 발생했습니다.";
-    res.status(502).json({ error: "ai_error", message });
+    res.status(status).json({ error: "ai_error", message, operations: [] });
   }
 });
