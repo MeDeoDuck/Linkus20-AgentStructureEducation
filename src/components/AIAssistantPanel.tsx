@@ -1,10 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useAIStore } from "../store/useAIStore";
-import { useAuthStore } from "../store/useAuthStore";
 import { summarizeOperation } from "../ai/diagramBridge";
-import LoginButton from "./LoginButton";
 
-/** 우측 GitHub Copilot AI Assistant 패널 (Copilot Chat 사이드바 스타일, 단일 경로). */
+/** 우측 AI Assistant 패널. GPT API 기반(로그인 불필요, 항상 활성). */
 export default function AIAssistantPanel() {
   const collapsed = useAIStore((s) => s.collapsed);
   const input = useAIStore((s) => s.input);
@@ -19,11 +17,6 @@ export default function AIAssistantPanel() {
   const applyPending = useAIStore((s) => s.applyPending);
   const cancelPending = useAIStore((s) => s.cancelPending);
   const clearChat = useAIStore((s) => s.clearChat);
-
-  const authStatus = useAuthStore((s) => s.status);
-  const copilotAvailable = useAuthStore((s) => s.copilotAvailable);
-
-  const canUse = authStatus === "authenticated" && copilotAvailable;
 
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -51,17 +44,14 @@ export default function AIAssistantPanel() {
   return (
     <aside className="ai-panel">
       <header className="ai-panel__header">
-        <span className="ai-panel__title">✨ GitHub Models AI</span>
+        <span className="ai-panel__title">✨ AI Assistant</span>
         <div className="ai-panel__header-actions">
           <button className="ai-icon-btn" onClick={clearChat} title="대화 비우기">🗑</button>
           <button className="ai-collapse-btn" onClick={toggleCollapsed} title="AI 패널 접기">▶</button>
         </div>
       </header>
 
-      {/* 로그인 / 사용자 정보 / Copilot 상태 */}
-      <div className="ai-panel__auth">
-        <LoginButton />
-      </div>
+      <div className="ai-panel__hint">GPT API 기반으로 다이어그램을 생성하고 수정합니다.</div>
 
       {/* 대화 기록 */}
       <div className="ai-panel__log" ref={logRef}>
@@ -113,27 +103,19 @@ export default function AIAssistantPanel() {
 
       {error && !pending && <div className="ai-error">⚠️ {error}</div>}
 
-      {/* 입력 — 비로그인/권한없음 시 비활성 + 안내 */}
+      {/* 입력 — 항상 활성 */}
       <div className="ai-panel__input">
-        {!canUse && (
-          <div className="ai-gate">
-            {authStatus !== "authenticated"
-              ? "GitHub로 로그인 후 AI 기능을 사용할 수 있습니다."
-              : "현재 GitHub 계정에서 GitHub Models 사용 권한을 확인할 수 없습니다. 다시 로그인하거나 GitHub Models 사용 설정을 확인해 주세요."}
-          </div>
-        )}
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={canUse ? "예: 회원가입 플로우 만들어줘  (Enter 전송, Shift+Enter 줄바꿈)" : "로그인 후 사용 가능"}
+          placeholder="예: 회원가입 플로우 만들어줘  (Enter 전송, Shift+Enter 줄바꿈)"
           rows={3}
-          disabled={!canUse}
         />
         <button
           className="btn btn--primary ai-run-btn"
           onClick={run}
-          disabled={!canUse || status === "loading" || !input.trim()}
+          disabled={status === "loading" || !input.trim()}
         >
           {status === "loading" ? "생성 중…" : "실행"}
         </button>

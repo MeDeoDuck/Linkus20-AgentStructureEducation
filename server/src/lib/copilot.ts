@@ -21,11 +21,11 @@ import { registerSecret, safeLog } from "../util/logRedact.js";
 import { normalizeDiagramOperations } from "./normalizeOps.js";
 
 /**
- * AI 호출 = RunYourAI(OpenAI 호환 게이트웨이)로 GPT-4.1 호출.
- * 운영자 키(서버 env) 사용 → 비용은 운영자 부담. 키/URL 은 프론트에 노출 안 함.
- *  RUNYOURAI_BASE_URL: OpenAI 호환 base (예: https://.../v1) — 코드가 /chat/completions 를 붙임
- *  RUNYOURAI_API_KEY : 게이트웨이 API 키
- *  RUNYOURAI_MODEL   : 모델명(기본 gpt-4.1)
+ * AI 호출 = RunYourAI(OpenAI 호환 게이트웨이)로 GPT 호출. 운영자 키(서버 env) 사용 → 비용 운영자 부담.
+ * 키는 프론트에 노출 안 함. GitHub 로그인/토큰 불필요.
+ *  RUNYOURAI_BASE_URL : OpenAI 호환 base (예: https://.../v1) — 코드가 /chat/completions 를 붙임
+ *  RUNYOURAI_API_KEY  : RunYourAI API 키(필수)
+ *  RUNYOURAI_MODEL    : 모델명(기본 gpt-4.1)
  */
 const AI_BASE_URL = (process.env.RUNYOURAI_BASE_URL ?? "").replace(/\/$/, "");
 const AI_API_KEY = process.env.RUNYOURAI_API_KEY ?? "";
@@ -103,7 +103,6 @@ export interface DiagramAIResponse {
 }
 
 export interface CopilotCallInput {
-  githubToken: string;
   /** 프론트가 system 을 보내면 그것을, 없으면 서버 기본 SYSTEM_PROMPT 사용. */
   system?: string;
   prompt: string;

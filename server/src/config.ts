@@ -1,16 +1,8 @@
 /**
- * 환경변수 로드 + 검증.
- * 필수 값이 없으면 부팅 시점에 즉시 죽여 잘못된 상태로 뜨는 것을 막는다.
+ * 환경변수 로드 + 검증. (인증 제거 → GitHub/세션 관련 설정 없음)
+ * AI 키(RUNYOURAI_*)는 lib/copilot.ts 가 process.env 에서 직접 읽는다.
  */
 import "dotenv/config";
-
-function required(name: string): string {
-  const v = process.env[name];
-  if (!v || v.trim() === "") {
-    throw new Error(`[config] 필수 환경변수 누락: ${name} (.env 를 확인하세요. .env.example 참고)`);
-  }
-  return v.trim();
-}
 
 function optional(name: string, fallback: string): string {
   const v = process.env[name];
@@ -24,29 +16,11 @@ export const config = {
   isProd: IS_PROD,
   port: Number(optional("PORT", "8787")),
 
-  // CORS 오리진. 비우면 same-origin 배포(프론트+백엔드 같은 도메인)로 간주해 CORS 미적용.
-  // 분리 배포일 때만 프론트 도메인을 지정한다.
+  // CORS 오리진. 비우면 same-origin 배포로 간주해 CORS 미적용. 분리 배포일 때만 지정.
   frontendOrigin: optional("FRONTEND_ORIGIN", ""),
 
-  // 쿠키 Secure — NODE_ENV=production 이거나 COOKIE_SECURE=true 면 적용(https 필수).
+  // 프록시(https 종단) 뒤 trust proxy 여부.
   cookieSecure: optional("COOKIE_SECURE", "") === "true" || IS_PROD,
-
-  // GitHub OAuth — mock 배포(USE_MOCK)에서는 /api/auth 를 안 쓰므로 부팅 필수에서 제외.
-  // 실제 OAuth 사용 시 채운다(미설정이면 auth 라우트가 안전 에러를 반환).
-  github: {
-    clientId: optional("GITHUB_CLIENT_ID", ""),
-    clientSecret: optional("GITHUB_CLIENT_SECRET", ""),
-    callbackUrl: optional("GITHUB_CALLBACK_URL", ""),
-    // read:user/user:email = 프로필·이메일 조회, models:read = GitHub Models API 호출 권한.
-    // ⚠️ scope 변경 후에는 기존 세션이 새 권한이 없으므로 로그아웃 → 재로그인 필요.
-    scope: "read:user user:email models:read",
-  },
-
-  session: {
-    secret: required("SESSION_SECRET"),
-    // 세션 만료(쿠키 maxAge). MVP: 8시간.
-    maxAgeMs: 1000 * 60 * 60 * 8,
-  },
 } as const;
 
 export type AppConfig = typeof config;

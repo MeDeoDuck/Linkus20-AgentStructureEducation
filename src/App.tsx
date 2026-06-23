@@ -6,7 +6,6 @@ import AIAssistantPanel from "./components/AIAssistantPanel";
 import LogoPickerBottomSheet from "./components/LogoPickerBottomSheet";
 import ContextMenu from "./components/ContextMenu";
 import { useDiagramStore } from "./store/useDiagramStore";
-import { useAuthStore } from "./store/useAuthStore";
 import { exportCanvasToPng } from "./utils/exportCanvas";
 import { fileToImageElement } from "./utils/imageUtils";
 import { CANVAS_H, CANVAS_W } from "./utils/anchors";
@@ -23,12 +22,6 @@ export default function App() {
   const title = useDiagramStore((s) => s.title);
   const clearSelection = useDiagramStore((s) => s.clearSelection);
   const addImageElement = useDiagramStore((s) => s.addImageElement);
-  const checkAuth = useAuthStore((s) => s.checkAuth);
-
-  // 앱 시작 시 GitHub 로그인 상태 확인(OAuth 콜백 후 복귀 포함).
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
 
   // Keyboard shortcuts (ignored while typing in an input).
   useEffect(() => {

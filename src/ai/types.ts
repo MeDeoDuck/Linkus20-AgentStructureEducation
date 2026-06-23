@@ -71,15 +71,6 @@ export interface DiagramAIRequest {
   selectedNodeId: string | null;
 }
 
-// ---- 인증(GitHub OAuth) ----
-export type AuthStatus = "loading" | "anonymous" | "authenticated";
-
-export interface GitHubUser {
-  login: string;
-  name?: string;
-  avatarUrl?: string;
-}
-
 /** provider 가 반환하는 응답. */
 export interface DiagramAIResponse {
   message: string;

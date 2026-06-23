@@ -1,13 +1,11 @@
 # Linkus20 — 블록 기반 다이어그램 편집기 + GitHub Copilot AI Assistant
 
 draw.io와 비슷하지만 **자유 드로잉이 아니라, 미리 정의된 블록을 배치·연결**해 다이어그램을 만드는 웹 편집기.
-오른쪽 패널은 AI Assistant — 사용자가 **개인 GitHub 계정으로 로그인**하면 본인 토큰으로
-**GitHub Models API**를 호출해 자연어 다이어그램 생성/수정을 받는다. AI 비용은 서비스 운영자가 아닌 **사용자 본인 계정** 기준.
+오른쪽 패널은 AI Assistant — **로그인 없이 바로** 자연어로 다이어그램 생성/수정을 요청한다.
+AI 호출은 백엔드가 **RunYourAI(OpenAI 호환 게이트웨이)로 GPT**를 부른다. **API 키는 백엔드 env 전용, 프론트에 절대 노출 안 함.**
 
-> ⚠️ **AI 경로 변경(중요):** 초기엔 GitHub Copilot SDK 단일 경로였으나, Copilot SDK 의 agent 기능은
-> **개인/학생 Copilot 계정에서 조직 정책 없이는 막힌다**(`requires an enterprise or organization policy`).
-> 따라서 실제 AI 호출을 **GitHub Models API**로 변경했다. GitHub OAuth 로그인·세션·프론트 패널은 그대로 유지.
-> OAuth scope 에 `models:read` 가 필요하며, **scope 변경 후에는 로그아웃 → 재로그인해야** 새 권한이 적용된다.
+> ℹ️ **AI 경로 이력:** 초기엔 GitHub Copilot SDK → (조직 정책 막힘) GitHub Models → 최종 **운영자 키 기반 GPT(RunYourAI)**.
+> GitHub 로그인·OAuth·세션은 모두 제거됨. 비용은 **운영자(키 소유자) 부담** — 사용량 상한 설정 권장.
 
 ## 주요 기능
 
@@ -102,15 +100,14 @@ VITE_API_BASE=http://localhost:8787
 ```
 **백엔드 (`server/.env`)** — `.env`는 절대 커밋하지 않는다(`.env.example`만 제공).
 ```
-GITHUB_CLIENT_ID=
-GITHUB_CLIENT_SECRET=
-GITHUB_CALLBACK_URL=http://localhost:8787/api/auth/github/callback
-SESSION_SECRET=
-GITHUB_MODELS_MODEL=openai/gpt-4o-mini
+RUNYOURAI_BASE_URL=https://<runyourai-host>/v1
+RUNYOURAI_API_KEY=
+RUNYOURAI_MODEL=gpt-4.1
 NODE_ENV=development
 PORT=8787
 # FRONTEND_ORIGIN 은 분리 배포일 때만(같은 도메인 단일 배포면 비워둠)
 ```
+> GitHub OAuth/로그인은 제거됨 — 로그인 없이 바로 AI 사용. AI 키는 위 `RUNYOURAI_*`(백엔드 env)에만 둔다.
 
 ## 학생용 안내 (GitHub Education / Copilot)
 

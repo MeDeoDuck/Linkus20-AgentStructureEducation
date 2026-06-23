@@ -10,8 +10,6 @@ import path from "node:path";
 import express from "express";
 import cors from "cors";
 import { config } from "./config.js";
-import { sessionMiddleware } from "./session.js";
-import { authRouter } from "./routes/auth.js";
 import { aiRouter } from "./routes/ai.js";
 import { safeLog } from "./util/logRedact.js";
 
@@ -35,7 +33,6 @@ if (config.frontendOrigin) {
 }
 
 app.use(express.json({ limit: "1mb" }));
-app.use(sessionMiddleware);
 
 // 헬스체크.
 app.get("/health", (_req, res) => {
@@ -43,7 +40,6 @@ app.get("/health", (_req, res) => {
 });
 
 // 라우터.
-app.use("/api/auth", authRouter);
 app.use("/api/ai", aiRouter);
 
 // 프로덕션: 프론트 빌드(dist) 정적 서빙 + SPA fallback(같은 도메인에서 한 번에 제공).
