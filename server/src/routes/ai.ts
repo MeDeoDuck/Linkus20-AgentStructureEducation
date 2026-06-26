@@ -7,9 +7,13 @@
  */
 import { Router, type Request, type Response } from "express";
 import { callCopilot, GitHubModelsError } from "../lib/copilot.js";
+import { makeRateLimiter } from "../util/rateLimit.js";
 import { safeLog } from "../util/logRedact.js";
 
 export const aiRouter = Router();
+
+// 간이 레이트리밋(공용). AI 호출은 동기 완료라 동시 4·분당 40 — 초과 시 429.
+const aiLimiter = makeRateLimiter({ concurrent: 4, perMinute: 40 });
 
 interface AiBody {
   system?: string;
@@ -20,7 +24,7 @@ interface AiBody {
   selectedNodeId?: string | null;
 }
 
-aiRouter.post("/copilot", async (req: Request, res: Response) => {
+aiRouter.post("/copilot", aiLimiter, async (req: Request, res: Response) => {
   const body = (req.body ?? {}) as AiBody;
 
   if (typeof body.prompt !== "string" || body.prompt.trim() === "") {

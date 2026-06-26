@@ -49,6 +49,21 @@ function canonType(raw: unknown): NodeType | null {
 let genCounter = 0;
 const genId = (prefix: string) => `${prefix}-gen-${(genCounter++).toString(36)}`;
 
+// --- P5: 실행 필드(nodeRole/config/prompt, conditionBranch/edgeKind) 통과 검증 ---
+const VALID_NODE_ROLES = ["input", "llm", "tool", "condition", "output"] as const;
+const VALID_CONDITION_BRANCHES = ["true", "false"] as const;
+const VALID_EDGE_KINDS = ["data", "control"] as const;
+
+/** 유효한 nodeRole 문자열이면 그대로, 아니면 undefined(필드 생략 → 그림 전용, 하위호환). */
+const asNodeRole = (v: unknown): string | undefined =>
+  typeof v === "string" && (VALID_NODE_ROLES as readonly string[]).includes(v) ? v : undefined;
+/** 평범한 객체면 config 로 통과(내부 필드는 느슨하게), 아니면 undefined. */
+const asConfig = (v: unknown): Record<string, unknown> | undefined => (isObj(v) ? v : undefined);
+const asBranch = (v: unknown): "true" | "false" | undefined =>
+  typeof v === "string" && (VALID_CONDITION_BRANCHES as readonly string[]).includes(v) ? (v as "true" | "false") : undefined;
+const asEdgeKind = (v: unknown): "data" | "control" | undefined =>
+  typeof v === "string" && (VALID_EDGE_KINDS as readonly string[]).includes(v) ? (v as "data" | "control") : undefined;
+
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const numOr = (v: unknown, fb: number) => (typeof v === "number" && Number.isFinite(v) ? v : fb);
 const optNum = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -97,18 +112,23 @@ export function normalizeDiagramOperations(resp: unknown): NormalizedResponse {
             return;
           }
           const size = DEFAULT_SIZE[ct];
-          operations.push({
-            type: "addNode",
-            node: {
-              id: theId() ?? genId("node"),
-              type: ct,
-              x: numOr(f("x"), spawnX),
-              y: numOr(f("y"), 200),
-              width: numOr(f("width"), size.width),
-              height: numOr(f("height"), size.height),
-              label: strOr(f("label"), DEFAULT_LABEL[ct]),
-            },
-          });
+          const node: Record<string, unknown> = {
+            id: theId() ?? genId("node"),
+            type: ct,
+            x: numOr(f("x"), spawnX),
+            y: numOr(f("y"), 200),
+            width: numOr(f("width"), size.width),
+            height: numOr(f("height"), size.height),
+            label: strOr(f("label"), DEFAULT_LABEL[ct]),
+          };
+          // P5 실행 필드: 유효할 때만 통과(없으면 생략 → 그림 전용, 하위호환).
+          const role = asNodeRole(f("nodeRole"));
+          if (role) node.nodeRole = role;
+          const cfg = asConfig(f("config"));
+          if (cfg) node.config = cfg;
+          const prompt = strOr(f("prompt"));
+          if (prompt !== undefined) node.prompt = prompt;
+          operations.push({ type: "addNode", node });
           spawnX += 200;
           return;
         }
@@ -119,10 +139,18 @@ export function normalizeDiagramOperations(resp: unknown): NormalizedResponse {
             warn(`skip addEdge[${i}]: source/target 누락`);
             return;
           }
-          operations.push({
-            type: "addEdge",
-            edge: { id: theId() ?? genId("edge"), source, target, label: strOr(f("label"), "") },
-          });
+          const edge: Record<string, unknown> = {
+            id: theId() ?? genId("edge"),
+            source,
+            target,
+            label: strOr(f("label"), ""),
+          };
+          // P5 실행 필드: condition 분기/엣지종류는 유효할 때만 통과(하위호환).
+          const branch = asBranch(f("conditionBranch"));
+          if (branch) edge.conditionBranch = branch;
+          const kind = asEdgeKind(f("edgeKind"));
+          if (kind) edge.edgeKind = kind;
+          operations.push({ type: "addEdge", edge });
           return;
         }
         case "updateNode": {
@@ -144,6 +172,13 @@ export function normalizeDiagramOperations(resp: unknown): NormalizedResponse {
           if (width !== undefined) patch.width = width;
           const height = optNum(f("height"));
           if (height !== undefined) patch.height = height;
+          // P7 봉합: 실행필드도 patch 로 통과(addNode 와 동일 패턴) — "기존 노드를 LLM 노드로 변경" 지원.
+          const role = asNodeRole(f("nodeRole"));
+          if (role) patch.nodeRole = role;
+          const cfg = asConfig(f("config"));
+          if (cfg) patch.config = cfg;
+          const prm = strOr(f("prompt"));
+          if (prm !== undefined) patch.prompt = prm;
           operations.push({ type: "updateNode", id, patch });
           return;
         }
@@ -180,6 +215,11 @@ export function normalizeDiagramOperations(resp: unknown): NormalizedResponse {
           if (target !== undefined) patch.target = target;
           const label = strOr(f("label"));
           if (label !== undefined) patch.label = label;
+          // P7 봉합: 분기/엣지종류도 patch 로 통과(유효할 때만, 하위호환).
+          const branch = asBranch(f("conditionBranch"));
+          if (branch) patch.conditionBranch = branch;
+          const kind = asEdgeKind(f("edgeKind"));
+          if (kind) patch.edgeKind = kind;
           operations.push({ type: "updateEdge", id, patch });
           return;
         }

@@ -11,6 +11,8 @@ import express from "express";
 import cors from "cors";
 import { config } from "./config.js";
 import { aiRouter } from "./routes/ai.js";
+import { runRouter } from "./routes/run.js";
+import { toolRouter } from "./routes/tool.js";
 import { safeLog } from "./util/logRedact.js";
 
 const app = express();
@@ -41,6 +43,8 @@ app.get("/health", (_req, res) => {
 
 // 라우터.
 app.use("/api/ai", aiRouter);
+app.use("/api/run", runRouter);
+app.use("/api/tool", toolRouter);
 
 // 프로덕션: 프론트 빌드(dist) 정적 서빙 + SPA fallback(같은 도메인에서 한 번에 제공).
 // 빌드 산출물은 레포 루트 dist/ 이고, 시작 명령은 레포 루트에서 실행된다.

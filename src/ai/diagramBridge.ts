@@ -5,7 +5,7 @@
  * 안전 원칙: operations 는 먼저 validateOperations 로 검증한 뒤에만 applyOperations 로
  * 반영한다. 존재하지 않는 id 참조나 잘못된 타입은 errors 로 막는다.
  */
-import type { ArrowElement, BlockType, DiagramBlock } from "../types";
+import type { ArrowElement, BlockType, DiagramBlock, NodeConfig, NodeRole } from "../types";
 import { anchorPoint, endpointsToArrow, reconcileArrow } from "../utils/anchors";
 import type { AIEdge, AINode, AINodeType, DiagramGraph, Operation } from "./types";
 
@@ -28,12 +28,39 @@ export function normalizeNodeType(raw: string): AINodeType | null {
   return null;
 }
 
+// --- P1 실행 필드 안전 검증 헬퍼(신뢰할 수 없는 JSON/patch 용) ---
+const VALID_NODE_ROLES: readonly NodeRole[] = ["input", "llm", "tool", "condition", "output"];
+const VALID_EDGE_KINDS = ["data", "control"] as const;
+const VALID_CONDITION_BRANCHES = ["true", "false"] as const;
+
+/** 유효한 NodeRole 문자열이면 그대로, 아니면 undefined. */
+function asNodeRole(v: unknown): NodeRole | undefined {
+  return typeof v === "string" && (VALID_NODE_ROLES as readonly string[]).includes(v) ? (v as NodeRole) : undefined;
+}
+/** 평범한 객체이면 NodeConfig 로 취급(내부 필드는 느슨하게 통과), 아니면 undefined. */
+function asNodeConfig(v: unknown): NodeConfig | undefined {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as NodeConfig) : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // 캔버스 → AI 그래프
 // ---------------------------------------------------------------------------
 
 export function blockToNode(b: DiagramBlock): AINode {
-  return { id: b.id, type: b.type, x: b.x, y: b.y, width: b.width, height: b.height, label: b.text, zIndex: b.zIndex };
+  return {
+    id: b.id,
+    type: b.type,
+    x: b.x,
+    y: b.y,
+    width: b.width,
+    height: b.height,
+    label: b.text,
+    zIndex: b.zIndex,
+    // P1 실행 필드(없으면 undefined → 직렬화 시 생략, 하위호환).
+    nodeRole: b.nodeRole,
+    config: b.config,
+    prompt: b.prompt,
+  };
 }
 
 /** 양끝이 모두 블록에 연결된 화살표만 edge 로 노출(source/target 가 필요하므로). */
@@ -48,6 +75,9 @@ export function toGraph(blocks: DiagramBlock[], arrows: ArrowElement[]): Diagram
         target: a.endConnection.blockId,
         label: a.label,
         zIndex: a.zIndex,
+        // P1 실행 필드(없으면 undefined → 직렬화 시 생략, 하위호환).
+        edgeKind: a.edgeKind,
+        conditionBranch: a.conditionBranch,
       });
     }
   }
@@ -154,6 +184,10 @@ function nodeToBlock(node: AINode): DiagramBlock {
     height: node.height ?? size.height,
     text: node.label ?? "",
     zIndex: node.zIndex ?? 0,
+    // P1 실행 필드 보존(없으면 undefined → optional, 하위호환).
+    nodeRole: node.nodeRole,
+    config: node.config,
+    prompt: node.prompt,
   };
 }
 
@@ -257,7 +291,7 @@ export function applyOperations(slice: DiagramSlice, ops: Operation[]): DiagramS
         blocks = blocks.map((b) => {
           if (b.id !== op.id) return b;
           // 알려진 필드만 화이트리스트 적용(임의 키 오염 방지).
-          const { x, y, width, height, label, type } = op.patch;
+          const { x, y, width, height, label, type, nodeRole, config, prompt } = op.patch;
           const next: DiagramBlock = { ...b };
           if (Number.isFinite(x)) next.x = x as number;
           if (Number.isFinite(y)) next.y = y as number;
@@ -265,6 +299,10 @@ export function applyOperations(slice: DiagramSlice, ops: Operation[]): DiagramS
           if (Number.isFinite(height)) next.height = height as number;
           if (label !== undefined) next.text = label;
           if (type) next.type = (normalizeNodeType(type) ?? b.type) as BlockType;
+          // P1 실행 필드: patch 에 있으면(undefined 아니면) 적용.
+          if (nodeRole !== undefined) next.nodeRole = nodeRole;
+          if (config !== undefined) next.config = config;
+          if (prompt !== undefined) next.prompt = prompt;
           return next;
         });
         reconcileFor(op.id);
@@ -287,7 +325,11 @@ export function applyOperations(slice: DiagramSlice, ops: Operation[]): DiagramS
         const target = blocks.find((b) => b.id === op.edge.target);
         if (source && target) {
           const z = op.edge.zIndex ?? sliceMaxZ(blocks, arrows) + 1;
-          arrows = [...arrows.filter((a) => a.id !== op.edge.id), makeArrow(op.edge.id, source, target, op.edge.label, z)];
+          const arrow = makeArrow(op.edge.id, source, target, op.edge.label, z);
+          // P5 실행 필드 보존(없으면 생략, 하위호환). condition 분기가 캔버스 화살표까지 살아남게 한다.
+          if (op.edge.edgeKind !== undefined) arrow.edgeKind = op.edge.edgeKind;
+          if (op.edge.conditionBranch !== undefined) arrow.conditionBranch = op.edge.conditionBranch;
+          arrows = [...arrows.filter((a) => a.id !== op.edge.id), arrow];
         } else {
           // validateOperations 를 통과했다면 도달하지 않는다(미리보기 개수와 어긋나지 않도록 알림).
           console.warn(`[applyOperations] addEdge 누락: source/target 블록을 찾지 못함 (${op.edge.source}→${op.edge.target})`);
@@ -298,15 +340,18 @@ export function applyOperations(slice: DiagramSlice, ops: Operation[]): DiagramS
         arrows = arrows.map((a) => {
           if (a.id !== op.id) return a;
           const label = op.patch.label !== undefined ? op.patch.label : a.label;
+          // P7: 분기/엣지종류도 patch 로 변경 가능(없으면 기존 유지).
+          const conditionBranch = op.patch.conditionBranch !== undefined ? op.patch.conditionBranch : a.conditionBranch;
+          const edgeKind = op.patch.edgeKind !== undefined ? op.patch.edgeKind : a.edgeKind;
           // source/target 가 바뀌면 addEdge 와 동일하게 위치 기반 anchor 를 재선출.
           if (op.patch.source || op.patch.target) {
             const srcId = op.patch.source ?? a.startConnection?.blockId;
             const tgtId = op.patch.target ?? a.endConnection?.blockId;
             const src = blocks.find((b) => b.id === srcId);
             const tgt = blocks.find((b) => b.id === tgtId);
-            if (src && tgt) return makeArrow(a.id, src, tgt, label, a.zIndex); // 기존 레이어 보존
+            if (src && tgt) return { ...makeArrow(a.id, src, tgt, label, a.zIndex), conditionBranch, edgeKind }; // 기존 레이어 보존
           }
-          return reconcileArrow({ ...a, label }, blocks);
+          return reconcileArrow({ ...a, label, conditionBranch, edgeKind }, blocks);
         });
         break;
       }
@@ -373,8 +418,10 @@ export function serializeGraph(graph: DiagramGraph): {
   edges: AIEdge[];
 } {
   return {
+    // ...n 스프레드로 P1 신규필드(nodeRole/config/prompt)까지 보존, type만 외부표기로 덮음.
     nodes: graph.nodes.map((n) => ({ ...n, type: toExternalType(n.type) })),
-    edges: graph.edges,
+    // ...e 스프레드로 P1 신규필드(edgeKind/conditionBranch)까지 보존.
+    edges: graph.edges.map((e) => ({ ...e })),
   };
 }
 
@@ -395,7 +442,7 @@ export function parseDiagramGraph(raw: unknown): DiagramGraph {
     if (!t) throw new Error(`허용되지 않는 블록 타입: "${String(n.type)}"`);
     const size = DEFAULT_SIZE[t];
     const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : fallback);
-    return {
+    const node: AINode = {
       id: n.id,
       type: t,
       x: typeof n.x === "number" && Number.isFinite(n.x) ? n.x : 80,
@@ -405,6 +452,13 @@ export function parseDiagramGraph(raw: unknown): DiagramGraph {
       label: typeof n.label === "string" ? n.label : "",
       zIndex: typeof n.zIndex === "number" && Number.isFinite(n.zIndex) ? n.zIndex : zc++,
     };
+    // P1 실행 필드: 유효할 때만 추가, 없으면 생략(하위호환).
+    const role = asNodeRole(n.nodeRole);
+    if (role) node.nodeRole = role;
+    const cfg = asNodeConfig(n.config);
+    if (cfg) node.config = cfg;
+    if (typeof n.prompt === "string") node.prompt = n.prompt;
+    return node;
   });
   const seen = new Set<string>();
   for (const n of nodes) {
@@ -415,13 +469,26 @@ export function parseDiagramGraph(raw: unknown): DiagramGraph {
   const edges: AIEdge[] = rawEdges
     .map((raw_e: unknown) => raw_e as Record<string, unknown>)
     .filter((e) => e && typeof e.id === "string" && typeof e.source === "string" && typeof e.target === "string")
-    .map((e) => ({
-      id: e.id as string,
-      source: e.source as string,
-      target: e.target as string,
-      label: typeof e.label === "string" ? e.label : undefined,
-      zIndex: typeof e.zIndex === "number" && Number.isFinite(e.zIndex) ? (e.zIndex as number) : zc++,
-    }));
+    .map((e) => {
+      const edge: AIEdge = {
+        id: e.id as string,
+        source: e.source as string,
+        target: e.target as string,
+        label: typeof e.label === "string" ? e.label : undefined,
+        zIndex: typeof e.zIndex === "number" && Number.isFinite(e.zIndex) ? (e.zIndex as number) : zc++,
+      };
+      // P1 실행 필드: 유효값일 때만 추가, 없으면 생략(하위호환).
+      if (typeof e.edgeKind === "string" && (VALID_EDGE_KINDS as readonly string[]).includes(e.edgeKind)) {
+        edge.edgeKind = e.edgeKind as AIEdge["edgeKind"];
+      }
+      if (
+        typeof e.conditionBranch === "string" &&
+        (VALID_CONDITION_BRANCHES as readonly string[]).includes(e.conditionBranch)
+      ) {
+        edge.conditionBranch = e.conditionBranch as AIEdge["conditionBranch"];
+      }
+      return edge;
+    });
   return { nodes, edges };
 }
 
@@ -432,7 +499,13 @@ export function graphToSlice(graph: DiagramGraph): DiagramSlice {
   for (const e of graph.edges ?? []) {
     const s = blocks.find((b) => b.id === e.source);
     const t = blocks.find((b) => b.id === e.target);
-    if (s && t) arrows.push(makeArrow(e.id, s, t, e.label, e.zIndex ?? 0));
+    if (s && t) {
+      const arrow = makeArrow(e.id, s, t, e.label, e.zIndex ?? 0);
+      // P1 실행 필드 보존(없으면 생략, 하위호환).
+      if (e.edgeKind !== undefined) arrow.edgeKind = e.edgeKind;
+      if (e.conditionBranch !== undefined) arrow.conditionBranch = e.conditionBranch;
+      arrows.push(arrow);
+    }
   }
   return { blocks, arrows };
 }

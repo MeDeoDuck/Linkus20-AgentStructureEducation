@@ -7,6 +7,8 @@
 /** AI가 다루는 블록 타입. 요구사항의 "rounded-rectangle"은 코드의 "rounded"로 정규화된다. */
 export type AINodeType = "user" | "rectangle" | "diamond" | "rounded";
 
+import type { NodeConfig, NodeRole } from "../types";
+
 export interface AINode {
   id: string;
   type: AINodeType;
@@ -17,6 +19,12 @@ export interface AINode {
   label: string;
   /** Layer order. JSON 저장/복원용(없으면 불러올 때 순서대로 부여). */
   zIndex?: number;
+  /** 실행 역할(P1). 없으면 그림 전용(하위호환). */
+  nodeRole?: NodeRole;
+  /** 역할별 실행 설정(P1). */
+  config?: NodeConfig;
+  /** llm 역할 등에서 사용하는 프롬프트(P1). */
+  prompt?: string;
 }
 
 export interface AIEdge {
@@ -26,6 +34,10 @@ export interface AIEdge {
   label?: string;
   /** Layer order. JSON 저장/복원용. */
   zIndex?: number;
+  /** 엣지 종류(P1): 데이터 흐름 vs 제어 흐름. */
+  edgeKind?: "data" | "control";
+  /** condition 노드에서 분기되는 가지(P1). */
+  conditionBranch?: "true" | "false";
 }
 
 export interface DiagramGraph {

@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useDiagramStore } from "../store/useDiagramStore";
 import { useViewportStore } from "../store/useViewportStore";
+import { useRunStore } from "../store/useRunStore";
 import { graphToSlice, parseDiagramGraph, serializeGraph, toGraph } from "../ai/diagramBridge";
 
 interface TopBarProps {
@@ -29,6 +30,9 @@ export default function TopBar({ onSave, onSaveSized, saving }: TopBarProps) {
   const zoomOut = useViewportStore((s) => s.zoomOut);
   const resetZoom = useViewportStore((s) => s.resetZoom);
 
+  const runStatus = useRunStore((s) => s.status);
+  const togglePanel = useRunStore((s) => s.togglePanel);
+
   const multi = selection.length >= 2;
   const many = selection.length >= 3;
 
@@ -36,7 +40,8 @@ export default function TopBar({ onSave, onSaveSized, saving }: TopBarProps) {
 
   const handleExportJson = () => {
     const { blocks, arrows, title: t } = useDiagramStore.getState();
-    const data = serializeGraph(toGraph(blocks, arrows));
+    // 워크플로우 메타(title) + 실행필드(nodeRole/config/prompt/conditionBranch, P1) 포함 직렬화.
+    const data = { title: t, ...serializeGraph(toGraph(blocks, arrows)) };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -50,10 +55,15 @@ export default function TopBar({ onSave, onSaveSized, saving }: TopBarProps) {
     e.target.value = ""; // 같은 파일 재선택 허용
     if (!file) return;
     try {
-      const graph = parseDiagramGraph(JSON.parse(await file.text()));
+      const parsed = JSON.parse(await file.text());
+      const graph = parseDiagramGraph(parsed);
       const { blocks, arrows } = graphToSlice(graph);
       const lostEdges = graph.edges.length - arrows.length;
       useDiagramStore.getState().loadDiagram(blocks, arrows);
+      // 워크플로우 이름 복원(있을 때만 — 하위호환).
+      if (parsed && typeof parsed.title === "string" && parsed.title.trim()) {
+        setTitle(parsed.title);
+      }
       if (lostEdges > 0) {
         alert(`불러왔습니다. 단, source/target 노드를 찾지 못한 연결선 ${lostEdges}개는 제외되었습니다.`);
       }
@@ -122,6 +132,13 @@ export default function TopBar({ onSave, onSaveSized, saving }: TopBarProps) {
         JSON 저장
       </button>
       <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={handleImportJson} />
+      <button
+        className="btn"
+        onClick={togglePanel}
+        title="워크플로 실행 패널 열기"
+      >
+        {runStatus === "running" ? "▶ 실행 중…" : "▶ Run"}
+      </button>
       <button
         className="btn"
         onClick={onSaveSized}

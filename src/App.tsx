@@ -3,6 +3,7 @@ import TopBar from "./components/TopBar";
 import Sidebar from "./components/Sidebar";
 import Canvas from "./components/Canvas";
 import AIAssistantPanel from "./components/AIAssistantPanel";
+import RunPanel from "./components/RunPanel";
 import LogoPickerBottomSheet from "./components/LogoPickerBottomSheet";
 import ContextMenu from "./components/ContextMenu";
 import { useDiagramStore } from "./store/useDiagramStore";
@@ -128,6 +129,7 @@ export default function App() {
       </div>
       <LogoPickerBottomSheet />
       <ContextMenu />
+      <RunPanel />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AIType, DiagramBlock as Block } from "../types";
 import { useDiagramStore } from "../store/useDiagramStore";
 import { useViewportStore } from "../store/useViewportStore";
+import { useRunStore, type NodeStatus } from "../store/useRunStore";
 import ResizeHandles from "./ResizeHandles";
 import BlockLogoView from "./BlockLogoView";
 import AIModal from "./AIModal";
@@ -19,6 +20,15 @@ interface DiagramBlockProps {
   canvasRef: React.RefObject<HTMLDivElement>;
 }
 
+/** 실행 상태별 테두리 색(pending 회색/running 파랑/succeeded 초록/failed 빨강/skipped 연회색). */
+const RUN_STATUS_COLOR: Record<NodeStatus, string> = {
+  pending: "#9ca3af",
+  running: "#3b82f6",
+  succeeded: "#22c55e",
+  failed: "#ef4444",
+  skipped: "#d1d5db",
+};
+
 export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
   const selection = useDiagramStore((s) => s.selection);
   const select = useDiagramStore((s) => s.select);
@@ -31,6 +41,9 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
   const clearSmartGuides = useDiagramStore((s) => s.clearSmartGuides);
   const beginHistory = useDiagramStore((s) => s.beginHistory);
   const { startMove } = useSelectionGestures();
+
+  // 실행 상태(빌드 상태와 분리). 현재 run 에서 이 블록의 노드 status 만 구독.
+  const runStatus = useRunStore((s) => s.current?.nodeRuns.find((r) => r.nodeId === block.id)?.status);
 
   const selected = isRefSelected({ type: "block", id: block.id }, selection);
   const isOnly = selected && selection.length === 1;
@@ -164,11 +177,41 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
           `block--${block.type}`,
           selected ? "block--selected" : "",
         ].join(" ")}
-        style={{ left: block.x, top: block.y, width: block.width, height: block.height, zIndex: block.zIndex }}
+        style={{
+          left: block.x,
+          top: block.y,
+          width: block.width,
+          height: block.height,
+          zIndex: block.zIndex,
+          ...(runStatus
+            ? { outline: `3px solid ${RUN_STATUS_COLOR[runStatus]}`, outlineOffset: 2 }
+            : {}),
+        }}
         onPointerDown={onPointerDown}
         onDoubleClick={onDoubleClick}
         onContextMenu={onContextMenu}
       >
+        {block.nodeRole && (
+          <span
+            style={{
+              position: "absolute",
+              top: -9,
+              left: -2,
+              fontSize: 9,
+              lineHeight: "12px",
+              padding: "0 4px",
+              borderRadius: 6,
+              background: "#111827",
+              color: "#fff",
+              fontWeight: 700,
+              letterSpacing: 0.2,
+              pointerEvents: "none",
+              zIndex: 2,
+            }}
+          >
+            {block.nodeRole}
+          </span>
+        )}
         {isDiamond && (
           <svg className="block__diamond-svg" width={block.width} height={block.height}>
             {/* 네 꼭짓점(위·오른쪽·아래·왼쪽) 기준 진짜 마름모. width≠height 여도 변형 없음. */}
@@ -224,6 +267,8 @@ export default function DiagramBlock({ block, canvasRef }: DiagramBlockProps) {
           onClose={() => setModalOpen(false)}
           onPickCategory={handlePickCategory}
           onApplyText={applyText}
+          block={block}
+          onSaveNodeRole={(patch) => updateBlock(block.id, patch)}
         />
       )}
     </>

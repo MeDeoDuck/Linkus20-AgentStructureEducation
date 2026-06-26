@@ -266,6 +266,19 @@ export default function ArrowElement({ arrow }: ArrowElementProps) {
         points={`${ax},${ay} ${ahx1},${ahy1} ${ahx2},${ahy2}`}
         fill={selected ? "#2563eb" : "#374151"}
       />
+      {arrow.conditionBranch && (
+        <text
+          x={ctrlX}
+          y={ctrlY - 4}
+          textAnchor="middle"
+          fontSize={12}
+          fontWeight={700}
+          fill={arrow.conditionBranch === "true" ? "#16a34a" : "#dc2626"}
+          style={{ userSelect: "none", pointerEvents: "none" }}
+        >
+          {arrow.conditionBranch}
+        </text>
+      )}
 
       {isOnly && (
         <g data-no-export="true">
